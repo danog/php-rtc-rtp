@@ -2,7 +2,6 @@
 
 namespace Tests\Webrtc\RTP\Receiver;
 
-use Mockery;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
@@ -68,10 +67,7 @@ class RTCRtpReceiverTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->transportMock = Mockery::mock(RTCDtlsTransportMock::class);
-        $this->transportMock->shouldReceive('getState')->andReturn(TLSState::CONNECTED);
-        $this->transportMock->shouldReceive('removeRtpReceiver');
-        $this->transportMock->shouldReceive('getReportTransport')->andReturn(new RTCTransportStats(1));
+        $this->transportMock = new RTCDtlsTransportMock();
         ClockMock::register(StreamStatistics::class);
     }
 
@@ -136,9 +132,6 @@ class RTCRtpReceiverTest extends TestCase
         $receiver->setRtcpSsrc(1234);
         $rtpParametersAudio = $this->getRTCRtpReceiveParametersAudio();
 
-        $this->transportMock->shouldReceive('setRtpReceiver')
-            ->with($receiver, $rtpParametersAudio);
-
         $receiver->start($rtpParametersAudio);
 
         // Simulate receiving a packet
@@ -158,8 +151,6 @@ class RTCRtpReceiverTest extends TestCase
         $receiver->setRtcpSsrc(1234);
 
         $rtpParametersAudio = $this->getRTCRtpReceiveParametersAudio();
-        $this->transportMock->shouldReceive('setRtpReceiver')
-            ->with($receiver, $rtpParametersAudio);
 
         $receiver->start($rtpParametersAudio);
 
@@ -215,19 +206,11 @@ class RTCRtpReceiverTest extends TestCase
     public function testRtpMissingVideoPacket()
     {
         AVCodec::init(true);
-        $rtcpPackets = [];
-        $this->transportMock->shouldReceive('sendRtcp')
-            ->andReturnUsing(function (...$args) use (&$rtcpPackets) {
-                $rtcpPackets[] = $args; // Store RTCP packets in an array
-                return true;
-            });
-
+        $this->transportMock->resetRtcpPackets();
         $receiver = new RTCRtpReceiver(MediaKind::Video, $this->transportMock);
         $receiver->setTrack(new RemoteStreamTrack(MediaKind::Video));
         $receiver->setRtcpSsrc(1234);
         $rtpParametersVideo = $this->getRTCRtpReceiveParametersVideo();
-        $this->transportMock->shouldReceive('setRtpReceiver')
-            ->with($receiver, $rtpParametersVideo);
         $receiver->start($rtpParametersVideo);
 
         // Generate some packets
@@ -237,8 +220,8 @@ class RTCRtpReceiverTest extends TestCase
         $receiver->handleRtpPacket($packets[0], 0);
         $receiver->handleRtpPacket($packets[128], 0);
 
-        $nacks = RtcpPacket::decode($rtcpPackets[0][0]);
-        $pli = RtcpPacket::decode($rtcpPackets[1][0]);
+        $nacks = RtcpPacket::decode($this->transportMock->getRtcpPackets()[0]);
+        $pli = RtcpPacket::decode($this->transportMock->getRtcpPackets()[1]);
 
         // Check NACK was triggered
         $lostPackets = range(1, 127);
@@ -256,8 +239,6 @@ class RTCRtpReceiverTest extends TestCase
         $receiver->setTrack(new RemoteStreamTrack(MediaKind::Video));
         assertEquals("video", $receiver->getKind()->value);
         $rtpParametersVideo = $this->getRTCRtpReceiveParametersVideo();
-        $this->transportMock->shouldReceive('setRtpReceiver')
-            ->with($receiver, $rtpParametersVideo);
         $receiver->start($rtpParametersVideo);
 
         // Receive RTP with empty payload
@@ -273,8 +254,6 @@ class RTCRtpReceiverTest extends TestCase
         $receiver->setTrack(new RemoteStreamTrack(MediaKind::Video));
         assertEquals("video", $receiver->getKind()->value);
         $rtpParametersVideo = $this->getRTCRtpReceiveParametersVideo();
-        $this->transportMock->shouldReceive('setRtpReceiver')
-            ->with($receiver, $rtpParametersVideo);
         $receiver->start($rtpParametersVideo);
 
         // Receive RTP with empty payload
@@ -291,8 +270,6 @@ class RTCRtpReceiverTest extends TestCase
         $receiver->setTrack(new RemoteStreamTrack(MediaKind::Video));
         assertEquals("video", $receiver->getKind()->value);
         $rtpParametersVideo = $this->getRTCRtpReceiveParametersVideo();
-        $this->transportMock->shouldReceive('setRtpReceiver')
-            ->with($receiver, $rtpParametersVideo);
         $receiver->start($rtpParametersVideo);
 
         // Receive RTP with empty payload
@@ -308,8 +285,6 @@ class RTCRtpReceiverTest extends TestCase
         $receiver->setTrack(new RemoteStreamTrack(MediaKind::Video));
         assertEquals("video", $receiver->getKind()->value);
         $rtpParametersVideo = $this->getRTCRtpReceiveParametersVideo();
-        $this->transportMock->shouldReceive('setRtpReceiver')
-            ->with($receiver, $rtpParametersVideo);
         $receiver->start($rtpParametersVideo);
         $receiver->setEnabled(false);
         $this->assertFalse($receiver->isEnabled());
@@ -332,8 +307,6 @@ class RTCRtpReceiverTest extends TestCase
         $receiver->setTrack(new RemoteStreamTrack(MediaKind::Video));
         assertEquals("video", $receiver->getKind()->value);
         $rtpParametersVideo = $this->getRTCRtpRtxReceiveParametersVideo();
-        $this->transportMock->shouldReceive('setRtpReceiver')
-            ->with($receiver, $rtpParametersVideo);
         $receiver->start($rtpParametersVideo);
 
         // Receive RTX with payload
@@ -358,8 +331,6 @@ class RTCRtpReceiverTest extends TestCase
         $receiver->setTrack(new RemoteStreamTrack(MediaKind::Video));
         assertEquals("video", $receiver->getKind()->value);
         $rtpParametersVideo = $this->getRTCRtpRtxUnknownSsrcReceiveParametersVideo();
-        $this->transportMock->shouldReceive('setRtpReceiver')
-            ->with($receiver, $rtpParametersVideo);
         $receiver->start($rtpParametersVideo);
 
         // Receive RTX with payload
@@ -373,25 +344,18 @@ class RTCRtpReceiverTest extends TestCase
 
     public function testSendRtcpNack()
     {
-        $rtcpPackets = [];
-        $this->transportMock->shouldReceive('sendRtcp')
-            ->andReturnUsing(function (...$args) use (&$rtcpPackets) {
-                $rtcpPackets[] = $args; // Store RTCP packets in an array
-                return true;
-            });
-
+        $this->transportMock->resetRtcpPackets();
         $receiver = new RTCRtpReceiver(MediaKind::Video, $this->transportMock);
         $receiver->setTrack(new RemoteStreamTrack(MediaKind::Video));
         $receiver->setRtcpSsrc(1234);
         $rtpParametersVideo = $this->getRTCRtpReceiveParametersVideo();
-        $this->transportMock->shouldReceive('setRtpReceiver')
-            ->with($receiver, $rtpParametersVideo);
+
         $receiver->start($rtpParametersVideo);
 
         // Send RTCP feedback NACK
         $receiver->sendRtcpNack(5678, [7654]);
 
-        $nacks = RtcpPacket::decode($rtcpPackets[0][0]);
+        $nacks = RtcpPacket::decode($this->transportMock->getRtcpPackets()[0]);
 
         // Check NACK was triggered
         $this->assertEquals([5678, [7654]], [$nacks[0]->getMediaSsrc(), $nacks[0]->getLost()]);
@@ -401,24 +365,16 @@ class RTCRtpReceiverTest extends TestCase
 
     public function testSendRtcpPli()
     {
-        $rtcpPackets = [];
-        $this->transportMock->shouldReceive('sendRtcp')
-            ->andReturnUsing(function (...$args) use (&$rtcpPackets) {
-                $rtcpPackets[] = $args; // Store RTCP packets in an array
-                return true;
-            });
-
+        $this->transportMock->resetRtcpPackets();
         $receiver = new RTCRtpReceiver(MediaKind::Video, $this->transportMock);
         $receiver->setTrack(new RemoteStreamTrack(MediaKind::Video));
         $receiver->setRtcpSsrc(1234);
         $rtpParametersVideo = $this->getRTCRtpReceiveParametersVideo();
-        $this->transportMock->shouldReceive('setRtpReceiver')
-            ->with($receiver, $rtpParametersVideo);
         $receiver->start($rtpParametersVideo);
 
         // Send RTCP feedback PLI
         $receiver->sendRtcpPli(5678);
-        $pli = RtcpPacket::decode($rtcpPackets[0][0]);
+        $pli = RtcpPacket::decode($this->transportMock->getRtcpPackets()[0]);
 
         $this->assertEquals(5678, $pli[0]->getMediaSsrc());
 
@@ -427,8 +383,15 @@ class RTCRtpReceiverTest extends TestCase
 
     public function testInvalidDtlsTransportState()
     {
-        $closedTransportMock = Mockery::mock(RTCDtlsTransportMock::class);
-        $closedTransportMock->shouldReceive('getState')->once()->andReturn(TLSState::CLOSED);
+        $closedTransportMock = $this->getMockBuilder(RTCDtlsTransportMock::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['getState'])
+            ->getMock();
+
+        $closedTransportMock->expects($this->once())
+            ->method('getState')
+            ->willReturn(TLSState::CLOSED);
+
         $this->expectException(InvalidArgumentException::class);
         new RTCRtpReceiver(MediaKind::Audio, $closedTransportMock);
     }
@@ -525,11 +488,6 @@ class RTCRtpReceiverTest extends TestCase
             $this->getVp8Codec(),
             new RTCRtpCodecParameters("video/rtx", 90000, 101, parameters: ["apt" => 100]),
         ]);
-    }
-
-    protected function tearDown(): void
-    {
-        Mockery::close();
     }
 }
 

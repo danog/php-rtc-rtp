@@ -2,7 +2,6 @@
 
 namespace Tests\Webrtc\RTP\Sender;
 
-use Mockery;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
@@ -40,10 +39,7 @@ class RTCRtpSenderTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->transportMock = Mockery::mock(RTCDtlsTransportMock::class);
-        $this->transportMock->shouldReceive('getState')->andReturn(TLSState::CONNECTED);
-        $this->transportMock->shouldReceive('sendRtcp');
-        $this->transportMock->shouldReceive('removeRtpSender');
+        $this->transportMock = new RTCDtlsTransportMock();
     }
 
     public function testConstruct(): void
@@ -55,8 +51,14 @@ class RTCRtpSenderTest extends TestCase
 
     public function testConstructInvalidDtlsTransportState(): void
     {
-        $closedTransportMock = Mockery::mock(RTCDtlsTransportMock::class);
-        $closedTransportMock->shouldReceive('getState')->once()->andReturn(TLSState::CLOSED);
+        $closedTransportMock = $this->getMockBuilder(RTCDtlsTransportMock::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['getState'])
+            ->getMock();
+
+        $closedTransportMock->expects($this->once())
+            ->method('getState')
+            ->willReturn(TLSState::CLOSED);
         $this->expectException(InvalidArgumentException::class);
         new RTCRtpSender(MediaKind::Audio, $closedTransportMock);
     }
@@ -67,10 +69,6 @@ class RTCRtpSenderTest extends TestCase
         $this->assertEquals("audio", $sender->getKind()->value);
 
         $rtpParameters = $this->getRTCRtpAudioSendParameters();
-
-        $this->transportMock->shouldReceive('setRtpSender')
-            ->with($sender, $rtpParameters);
-        $this->transportMock->shouldReceive('sendRtp');
         $sender->start($rtpParameters);
         $sender->stop();
     }
@@ -80,10 +78,7 @@ class RTCRtpSenderTest extends TestCase
         $rtpParameters = $this->getRTCRtpSendParameters();
         $sender = new RTCRtpSender(new VideoStreamTrack(), $this->transportMock);
 
-        $this->transportMock->shouldReceive('setRtpSender')
-            ->with($sender, $rtpParameters);
         $this->assertEquals("video", $sender->getKind()->value);
-        $this->transportMock->shouldReceive('sendRtp');
         $sender->start($rtpParameters);
         $packet = new RtcpRtpfbPacket(RtcpConstants::RTCP_RTPFB_NACK, 1234, $sender->getSsrc(), [7654]);
         $sender->handleRtcpPacket($packet);
@@ -95,9 +90,6 @@ class RTCRtpSenderTest extends TestCase
         $rtpParameters = $this->getRTCRtpSendParameters();
         $sender = new RTCRtpSender(new VideoStreamTrack(), $this->transportMock);
 
-        $this->transportMock->shouldReceive('setRtpSender')
-            ->with($sender, $rtpParameters);
-        $this->transportMock->shouldReceive('sendRtp');
         $this->assertEquals("video", $sender->getKind()->value);
         $sender->start($rtpParameters);
         $packet = new RtcpPsfbPacket(RtcpConstants::RTCP_PSFB_PLI, 1234, $sender->getSsrc());
@@ -110,9 +102,6 @@ class RTCRtpSenderTest extends TestCase
         $rtpParameters = $this->getRTCRtpSendParameters();
         $sender = new RTCRtpSender(new VideoStreamTrack(), $this->transportMock);
 
-        $this->transportMock->shouldReceive('setRtpSender')
-            ->with($sender, $rtpParameters);
-        $this->transportMock->shouldReceive('sendRtp');
         $this->assertEquals("video", $sender->getKind()->value);
         $sender->start($rtpParameters);
         $packet = new RtcpPsfbPacket(RtcpConstants::RTCP_PSFB_APP, 1234, 0, RtpUtility::packRembFci(4160000, [$sender->getSsrc()]));
@@ -127,10 +116,6 @@ class RTCRtpSenderTest extends TestCase
         $rtpParameters = $this->getRTCRtpSendParameters();
         $sender = new RTCRtpSender(new VideoStreamTrack(), $this->transportMock);
 
-        $this->transportMock->shouldReceive('getReportTransport')->andReturn(new RTCTransportStats(1));
-        $this->transportMock->shouldReceive('setRtpSender')
-            ->with($sender, $rtpParameters);
-        $this->transportMock->shouldReceive('sendRtp');
         $this->assertEquals("video", $sender->getKind()->value);
         $sender->start($rtpParameters);
         $packet = new RtcpRrPacket(1234, [
@@ -159,10 +144,6 @@ class RTCRtpSenderTest extends TestCase
         $rtpParameters = $this->getRTCRtpSendParameters();
         $sender = new RTCRtpSender(new VideoStreamTrack(), $this->transportMock);
 
-        $this->transportMock->shouldReceive('getReportTransport')->andReturn(new RTCTransportStats(1));
-        $this->transportMock->shouldReceive('setRtpSender')
-            ->with($sender, $rtpParameters);
-        $this->transportMock->shouldReceive('sendRtp');
         $this->assertEquals("video", $sender->getKind()->value);
         $sender->start($rtpParameters);
         $sender->sendKeyframe();
@@ -175,15 +156,6 @@ class RTCRtpSenderTest extends TestCase
         $rtpRtxParameters = $this->getRTCRtpRtxSendParameters();
         $sender = new RTCRtpSender(new VideoStreamTrack(), $this->transportMock);
 
-        $this->transportMock->shouldReceive('getReportTransport')->andReturn(new RTCTransportStats(1));
-        $rtpPackets = [];
-        $this->transportMock->shouldReceive('sendRtp')
-            ->andReturnUsing(function (...$args) use (&$rtpPackets) {
-                $rtpPackets[] = $args; // Store RTP packet in an array
-                return true;
-            });
-        $this->transportMock->shouldReceive('setRtpSender')
-            ->with($sender, $rtpRtxParameters);
         $this->assertEquals("video", $sender->getKind()->value);
         $sender->start($rtpRtxParameters);
         $sender->setSsrc(1234);
@@ -205,10 +177,6 @@ class RTCRtpSenderTest extends TestCase
         $rtpParameters = $this->getRTCRtpAudioSendParameters();
         $sender = new RTCRtpSender(new AudioStreamTrack(), $this->transportMock);
 
-        $this->transportMock->shouldReceive('setRtpSender')
-            ->with($sender, $rtpParameters);
-        $this->transportMock->shouldReceive('sendRtp');
-        $this->transportMock->shouldReceive('getReportTransport')->andReturn(new RTCTransportStats(1));
         $this->assertEquals("audio", $sender->getKind()->value);
         $this->assertTrue($sender->isEnabled());
         $sender->start($rtpParameters);
@@ -223,22 +191,15 @@ class RTCRtpSenderTest extends TestCase
     {
         $rtpParameters = $this->getRTCRtpAudioSendParameters();
         $sender = new RTCRtpSender(new AudioStreamTrack(), $this->transportMock);
-
-        $this->transportMock->shouldReceive('setRtpSender')
-            ->with($sender, $rtpParameters);
         $this->assertEquals("audio", $sender->getKind()->value);
-        $this->transportMock->shouldReceive('sendRtp');
         $sender->start($rtpParameters);
         $sender->stop();
     }
 
     public function testStopBeforeSend(): void
     {
-        $rtpParameters = $this->getRTCRtpAudioSendParameters();
         $sender = new RTCRtpSender(new AudioStreamTrack(), $this->transportMock);
 
-        $this->transportMock->shouldReceive('setRtpSender')
-            ->with($sender, $rtpParameters);
         $this->assertEquals("audio", $sender->getKind()->value);
         $sender->stop();
     }
@@ -249,18 +210,10 @@ class RTCRtpSenderTest extends TestCase
         $track = new AudioStreamTrack();
         $sender = new RTCRtpSender($track, $this->transportMock);
 
-        $this->transportMock->shouldReceive('setRtpSender')
-            ->with($sender, $rtpParameters);
-        $this->transportMock->shouldReceive('sendRtp');
         $this->assertEquals("audio", $sender->getKind()->value);
         $sender->start($rtpParameters);
         $track->stop();
         $sender->stop();
-    }
-
-    protected function tearDown(): void
-    {
-        Mockery::close();
     }
 
     private function getRTCRtpSendParameters(): RTCRtpSendParameters

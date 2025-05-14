@@ -12,6 +12,7 @@ use Webrtc\Stats\RTCTransportStats;
 
 class RTCDtlsTransportMock implements RTCRTPDtlsTransportInterface
 {
+    private array $rtcpPackets = [];
 
     public function getState(): TLSState
     {
@@ -35,7 +36,7 @@ class RTCDtlsTransportMock implements RTCRTPDtlsTransportInterface
 
     public function sendRtcp(string $data): void
     {
-        // TODO: Implement sendRtcp() method.
+        $this->rtcpPackets[] = $data;
     }
 
     public function setRtpSender(RtpSenderInterface $sender, RTCRtpSendParameters $parameters): void
@@ -51,5 +52,15 @@ class RTCDtlsTransportMock implements RTCRTPDtlsTransportInterface
     public function sendRtp(string $data): void
     {
         // TODO: Implement sendRtp() method.
+    }
+
+    public function getRtcpPackets(): array
+    {
+        return $this->rtcpPackets;
+    }
+
+    public function resetRtcpPackets(): void
+    {
+        $this->rtcpPackets = [];
     }
 }

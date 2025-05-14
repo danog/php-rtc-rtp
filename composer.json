@@ -37,7 +37,6 @@
   "require-dev": {
     "phpunit/php-code-coverage": "11.0.x-dev",
     "phpunit/phpunit": "^11.3",
-    "mockery/mockery": "^1.6",
     "symfony/phpunit-bridge": "7.3.x-dev"
   },
   "autoload": {

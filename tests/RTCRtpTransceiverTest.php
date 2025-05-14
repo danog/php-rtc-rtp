@@ -2,7 +2,6 @@
 
 namespace Tests\Webrtc\RTP;
 
-use Mockery;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Webrtc\Exception\InvalidArgumentException;
@@ -15,8 +14,8 @@ use Webrtc\RTPParameter\RTCRtpCodecCapability;
 #[CoversClass(RTCRtpTransceiver::class)]
 class RTCRtpTransceiverTest extends TestCase {
     public function testCodecPreferences(): void {
-        $rtpSenderMock = Mockery::mock(RTCRtpSender::class);
-        $rtpReceiverMock = Mockery::mock(RTCRtpReceiver::class);
+        $rtpSenderMock = $this->getMockBuilder(RTCRtpSender::class)->disableOriginalConstructor()->getMock();
+        $rtpReceiverMock = $this->getMockBuilder(RTCRtpReceiver::class)->disableOriginalConstructor()->getMock();
         $transceiver = new RTCRtpTransceiver(MediaKind::Audio, $rtpReceiverMock, $rtpSenderMock);
 
         // Test initial state

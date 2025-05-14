@@ -10,12 +10,14 @@ use Webrtc\RTP\HeaderExtension\HeaderExtensions;
 use Webrtc\RTP\HeaderExtension\HeaderExtensionsMap;
 use Webrtc\RTP\RtpPacket;
 use Webrtc\RTP\RtpUtility;
+use Webrtc\RTP\Sender\RTCRtpSender;
 use Webrtc\RTPParameter\RTCRtpHeaderExtensionParameters;
 use Webrtc\RTPParameter\RTCRtpParameters;
 
 #[UsesClass(HeaderExtensions::class)]
 #[UsesClass(HeaderExtensionsMap::class)]
 #[UsesClass(RtpUtility::class)]
+#[UsesClass(RTCRtpSender::class)]
 #[CoversClass(RtpPacket::class)]
 class RtpPacketTest extends TestCase
 {
