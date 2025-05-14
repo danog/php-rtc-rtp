@@ -1,10 +1,11 @@
 {
   "name": "quasarstream/rtp",
   "type": "library",
-  "description": "A PHP library for parsing and generating RTP (Session Description Protocol).",
+  "description": "A PHP library for handling RTP (Real-time Transport Protocol) packets.",
   "keywords": [
+    "webrtc",
     "rtp",
-    "rtp"
+    "real-time-transport-protocol"
   ],
   "homepage": "https://www.quasarstream.com/webrtc",
   "license": "BSD-3-Clause",

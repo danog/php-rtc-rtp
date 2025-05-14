@@ -3,18 +3,24 @@
 [![PHP Version](https://img.shields.io/badge/php-%3E%3D8.4-blue.svg)](https://php.net/)
 [![License](https://img.shields.io/badge/license-BSD-blue.svg)](LICENSE)
 
-A PHP library for parsing and generating RTP (Session Description Protocol). This package supports media negotiation, ICE parameters, RTP fingerprints, and codec configurations used in WebRTC.
+A PHP library for handling RTP (Real-time Transport Protocol) packets. This package provides tools for encoding, decoding, parsing, and analyzing RTP streams—useful for WebRTC, VoIP, and media streaming applications.
 
-## Features
+##  Features
 
-- Parse and build RTP offers and answers
-- Support for ICE, RTP, RTP, SCTP, and media attributes
-- Codec negotiation helpers
+- Encode and decode RTP packets
+- Extract RTP header fields
+- Support for common RTP payload types
 
 
 ## Requirements
 
-- PHP ≥ 8.4
+- **PHP ≥ 8.4** with FFI extension enabled
+- Linux (Windows and macOS support planned for future releases)
+- FFmpeg/libav shared libraries (libavcodec, libavfilter, etc.)
+  - Compatible with FFmpeg **version 7.1.1**
+- libopus development libraries
+- libvpx development libraries
+  - Compatible with libvpx **version 1.15.0**
 
 ## Documentation
 
@@ -43,5 +49,12 @@ BSD 3-Clause License. See [LICENSE](LICENSE) for details.
 
 ## References
 
-- [RFC 4566 – RTP: Session Description Protocol](https://datatracker.ietf.org/doc/html/rfc4566)
-- [RFC 8829 – WebRTC RTP Usage](https://datatracker.ietf.org/doc/html/rfc8829)
+- [RFC 3550 - RTP: A Transport Protocol for Real-Time Applications](https://tools.ietf.org/html/rfc3550)
+
+- [RFC 3551 – RTP Profile for Audio and Video Conferences with Minimal Control](https://datatracker.ietf.org/doc/html/rfc3551)
+
+- [RFC 4585 – Extended RTP Profile for RTCP-Based Feedback (RTP/AVPF)](https://datatracker.ietf.org/doc/html/rfc4585)
+
+- [RFC 8285 – RTP Header Extension for Mid and RID (used in WebRTC)](https://datatracker.ietf.org/doc/html/rfc8285)
+
+- [RFC 5761 – Multiplexing RTP and RTCP on a Single Port](https://datatracker.ietf.org/doc/html/rfc5761)
