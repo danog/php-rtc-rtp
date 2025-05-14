@@ -1,0 +1,79 @@
+name: RTP TESTS
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP 8.4 with FFI and GMP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: 8.4
+          tools: composer:v2
+          extensions: ffi, gmp
+
+      - name: Validate composer.json and composer.lock
+        run: composer validate --strict
+
+      - name: Cache Composer packages
+        id: composer-cache
+        uses: actions/cache@v3
+        with:
+          path: vendor
+          key: ${{ runner.os }}-php-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-php-
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress
+
+      - name: Install FFmpeg 7.1.1 with libx264, libopus, libvpx 1.15.0
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            autoconf automake build-essential cmake git libtool pkg-config \
+            yasm nasm wget unzip libssl-dev \
+            libx264-dev libopus-dev
+
+          # Install FFmpeg 7.1.1
+          wget https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.bz2
+          tar xjf ffmpeg-7.1.1.tar.bz2
+          cd ffmpeg-7.1.1
+          ./configure --enable-shared --enable-gpl --enable-libx264 --enable-libopus
+          make -j$(nproc)
+          sudo make install
+          sudo ldconfig
+          cd ..
+          
+          # Build and install libvpx
+          mkdir -p ~/vpx_sources
+          cd ~/vpx_sources
+          curl -LO https://github.com/webmproject/libvpx/archive/refs/tags/v1.15.0.tar.gz
+          tar xzvf v1.15.0.tar.gz
+          cd libvpx-1.15.0
+
+          ./configure --prefix=/usr/local --enable-shared --disable-examples
+          make -j$(nproc)
+          sudo make install
+          sudo ldconfig
+
+          pkg-config --modversion vpx || echo "libvpx not found"
+
+      - name: Check PHP version and extensions
+        run: |
+          php -v
+          php -m | grep -i gmp
+
+      - name: Run PHPUnit tests
+        run: vendor/bin/phpunit
