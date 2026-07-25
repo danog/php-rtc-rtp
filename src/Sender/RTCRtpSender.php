@@ -92,6 +92,15 @@ class RTCRtpSender implements RtpSenderInterface
     /** @var bool Whether the sender is enabled */
     private bool $enabled = true;
 
+    /**
+     * How often the track is polled for the next frame.
+     *
+     * A zero interval would spin the event loop as fast as it can go, burning a whole core: the
+     * shortest packetization time in use is 10ms, so polling an order of magnitude faster than
+     * that keeps jitter negligible while leaving the CPU idle.
+     */
+    private const float POLL_INTERVAL = 0.001;
+
     /** @var EncoderInterface|null The encoder for media frames */
     private ?EncoderInterface $encoder = null;
 
@@ -341,7 +350,7 @@ class RTCRtpSender implements RtpSenderInterface
         $this->log("Start RTP task");
         $this->sequenceNumber = $this->generateSequenceNumber();
         $this->orgTimestamp = random_int(0, 0xFFFFFFFF);
-        $this->rtpTask = $this->rtpLoop->addPeriodicTimer(0, function () {
+        $this->rtpTask = $this->rtpLoop->addPeriodicTimer(self::POLL_INTERVAL, function () {
             if (!$this->track) {
                 return;
             }
