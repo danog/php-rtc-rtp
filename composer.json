@@ -1,53 +1,56 @@
 {
-  "name": "quasarstream/rtp",
-  "type": "library",
-  "description": "A PHP library for handling RTP (Real-time Transport Protocol) packets.",
-  "keywords": [
-    "webrtc",
-    "rtp",
-    "real-time-transport-protocol"
-  ],
-  "homepage": "https://www.quasarstream.com/webrtc",
-  "license": "BSD-3-Clause",
-  "authors": [
-    {
-      "name": "Amin Yazdanpanah",
-      "email": "github@aminyazdanpanah.com"
+    "name": "danog/php-rtc-rtp",
+    "type": "library",
+    "description": "A PHP library for handling RTP (Real-time Transport Protocol) packets. Fork with FFI made optional and a pure-PHP DTLS/SRTP stack, maintained for MadelineProto.",
+    "keywords": [
+        "webrtc",
+        "rtp",
+        "real-time-transport-protocol"
+    ],
+    "homepage": "https://www.quasarstream.com/webrtc",
+    "license": "BSD-3-Clause",
+    "authors": [
+        {
+            "name": "Amin Yazdanpanah",
+            "email": "github@aminyazdanpanah.com"
+        },
+        {
+            "name": "Sana Moniri",
+            "email": "s.mo@quasarstream.com"
+        },
+        {
+            "name": "Quasar Stream Community",
+            "homepage": "https://quasarstream.com/teams"
+        }
+    ],
+    "require": {
+        "php": "^8.4",
+        "quasarstream/exception": "^1.0",
+        "quasarstream/codecs": "^1.0",
+        "quasarstream/rtp-parameter": "^1.0",
+        "quasarstream/rtcp": "^1.0",
+        "quasarstream/stats": "^1.0",
+        "quasarstream/ntp": "^1.0",
+        "quasarstream/sdp": "^1.0",
+        "ramsey/uuid": "^4.7"
     },
-    {
-      "name": "Sana Moniri",
-      "email": "s.mo@quasarstream.com"
+    "require-dev": {
+        "phpunit/php-code-coverage": "11.0.x-dev",
+        "phpunit/phpunit": "^11.3",
+        "symfony/phpunit-bridge": "7.3.x-dev"
     },
-    {
-      "name": "Quasar Stream Community",
-      "homepage": "https://quasarstream.com/teams"
+    "autoload": {
+        "psr-4": {
+            "Webrtc\\RTP\\": "src"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\Webrtc\\RTP\\": "tests"
+        }
+    },
+    "minimum-stability": "dev",
+    "replace": {
+        "quasarstream/rtp": "self.version"
     }
-  ],
-  "require": {
-    "php": "^8.4",
-    "quasarstream/exception": "^1.0",
-    "quasarstream/codecs": "^1.0",
-    "quasarstream/rtp-parameter": "^1.0",
-    "quasarstream/rtcp": "^1.0",
-    "quasarstream/stats": "^1.0",
-    "quasarstream/ntp": "^1.0",
-    "quasarstream/sdp": "^1.0",
-    "ramsey/uuid": "^4.7"
-  },
-  "require-dev": {
-    "phpunit/php-code-coverage": "11.0.x-dev",
-    "phpunit/phpunit": "^11.3",
-    "symfony/phpunit-bridge": "7.3.x-dev"
-  },
-  "autoload": {
-    "psr-4": {
-      "Webrtc\\RTP\\": "src"
-    }
-  },
-  "autoload-dev": {
-    "psr-4": {
-      "Tests\\Webrtc\\RTP\\": "tests"
-    }
-  },
-  "minimum-stability": "dev"
 }
