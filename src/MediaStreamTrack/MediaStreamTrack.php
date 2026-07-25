@@ -14,6 +14,7 @@ namespace Webrtc\RTP\MediaStreamTrack;
 use Evenement\EventEmitter;
 use Ramsey\Uuid\Uuid;
 use Webrtc\AVCodec\Data\Packet;
+use Webrtc\Codecs\EncodedPacket;
 use Webrtc\AVCodec\Frame\FrameInterface;
 use Webrtc\RTP\Enum\MediaKind;
 
@@ -119,7 +120,7 @@ abstract class MediaStreamTrack extends EventEmitter
      * This is an abstract method that subclasses must implement.
      * It handles the retrieval or generation of the next frame or packet.
      *
-     * @return FrameInterface|Packet|null The next frame or packet, or null if none available.
+     * @return FrameInterface|Packet|EncodedPacket|null The next frame or packet, or null if none available.
      */
-    abstract public function receiveData(): FrameInterface|Packet|null;
+    abstract public function receiveData(): FrameInterface|Packet|EncodedPacket|null;
 }

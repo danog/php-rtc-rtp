@@ -76,7 +76,7 @@ class AudioStreamTrack extends MediaStreamTrack
     public function __construct()
     {
         parent::__construct();
-        AVCodec::init();
+        // libav is only needed to allocate the silent PCM frames, see generateSilentFrame().
         $this->samplesPerFrame = (int)(self::AUDIO_PTIME * $this->sampleRate);
     }
 
@@ -116,6 +116,7 @@ class AudioStreamTrack extends MediaStreamTrack
         }
         $this->generateTimestamp();
 
+        AVCodec::init();
         $frame = new AudioFrame(format: "s16", layout: "mono", samples: $this->samplesPerFrame);
 
         // Fill the frame with silence (zeros)

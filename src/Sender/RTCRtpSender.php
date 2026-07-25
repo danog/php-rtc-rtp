@@ -23,6 +23,7 @@ use Throwable;
 use Webrtc\AVCodec\Frame\AudioFrame;
 use Webrtc\AVCodec\Frame\FrameInterface;
 use Webrtc\Codecs\Codec;
+use Webrtc\Codecs\EncodedPacket;
 use Webrtc\Codecs\CodecUtility;
 use Webrtc\Codecs\EncoderInterface;
 use Webrtc\Exception\InvalidArgumentException;
@@ -266,7 +267,6 @@ class RTCRtpSender implements RtpSenderInterface
         $this->cname = $parameters->rtcp->cname;
         $this->mid = $parameters->muxId;
         $this->codec = $parameters->codecs[0];
-        $this->encoder = Codec::getEncoder($parameters->codecs[0]);
         $this->transport->setRtpSender($this, $parameters);
         $this->headerExtensionsMap->configure($parameters);
 
@@ -376,6 +376,9 @@ class RTCRtpSender implements RtpSenderInterface
         if ($data === null) {
             return null;
         }
+        if ($data instanceof EncodedPacket) {
+            $audioLevel = $data->getAudioLevel();
+        }
         if ($data instanceof FrameInterface) {
             if ($data instanceof AudioFrame) {
                 $audioLevel = RtpUtility::computeAudioLevelDbov($data->getPlanes()[0]->getData(), $data->getSamples());
@@ -387,6 +390,9 @@ class RTCRtpSender implements RtpSenderInterface
             }
             [$payloads, $timestamp] = $this->encoder->encode($data, $useKeyFrame);
         } else {
+            if ($this->encoder === null) {
+                $this->encoder = Codec::getEncoder($this->codec);
+            }
             [$payloads, $timestamp] = $this->encoder->pack($data);
         }
 
@@ -417,10 +423,8 @@ class RTCRtpSender implements RtpSenderInterface
 
         // Set header extensions
         $ntpTime = NetworkTimeProtocol::currentNtpTime();
-        $gmpTime = gmp_init($ntpTime);
-        $shifted = gmp_div_q($gmpTime, gmp_pow(2, 14));
-        $masked = gmp_and($shifted, 0x00FFFFFF);
-        $packet->getExtensions()->setAbsSendTime(gmp_intval($masked));
+        // abs-send-time is a 6.18 fixed point value: bits 14..37 of the raw NTP timestamp.
+        $packet->getExtensions()->setAbsSendTime((($ntpTime >> 14) & 0x00FFFFFF));
         $packet->getExtensions()->setMid($this->mid);
         if ($encodedFrame->getAudioLevel()) {
             $packet->getExtensions()->setAudioLevel([false, -$encodedFrame->getAudioLevel()]);
@@ -485,9 +489,8 @@ class RTCRtpSender implements RtpSenderInterface
     {
         $packets = [$this->generateRtcpSrPacket()];
 
-        $gmp = gmp_init($this->ntpTimestamp);
-        $shifted = gmp_div_q($gmp, gmp_pow(2, 16));
-        $this->lsr = gmp_intval(gmp_and($shifted, "0xFFFFFFFF"));
+        // The LSR field carries the middle 32 bits of the raw NTP timestamp.
+        $this->lsr = (((int) $this->ntpTimestamp) >> 16) & 0xFFFFFFFF;
         $this->lsrTime = microtime(true);
 
         // Generate RTCP SDES packet

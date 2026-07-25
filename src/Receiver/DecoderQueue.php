@@ -134,6 +134,9 @@ class DecoderQueue
     public function stop(): void
     {
         $this->queue = null;
-        $this->loop->cancelTimer($this->queueTask);
+        // The task is only scheduled by start(), which is skipped in raw (no-decode) mode.
+        if (isset($this->queueTask)) {
+            $this->loop->cancelTimer($this->queueTask);
+        }
     }
 }

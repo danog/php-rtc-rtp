@@ -13,6 +13,7 @@ namespace Webrtc\RTP\MediaStreamTrack;
 
 use SplQueue;
 use Webrtc\AVCodec\Data\Packet;
+use Webrtc\Codecs\EncodedPacket;
 use Webrtc\AVCodec\Frame\FrameInterface;
 use Webrtc\RTP\Enum\MediaKind;
 
@@ -66,7 +67,7 @@ class RemoteStreamTrack extends MediaStreamTrack
      *
      * @param FrameInterface $frame The frame to add to the queue.
      */
-    public function queueFrame(FrameInterface $frame): void
+    public function queueFrame(FrameInterface|EncodedPacket $frame): void
     {
         $this->frameQueue->enqueue($frame);
     }
@@ -79,7 +80,7 @@ class RemoteStreamTrack extends MediaStreamTrack
      *
      * @return FrameInterface|Packet|null The next frame or packet, or null if the queue is empty.
      */
-    public function receiveData(): FrameInterface|Packet|null
+    public function receiveData(): FrameInterface|Packet|EncodedPacket|null
     {
         if (!$this->frameQueue->isEmpty()) {
             return $this->frameQueue->dequeue();

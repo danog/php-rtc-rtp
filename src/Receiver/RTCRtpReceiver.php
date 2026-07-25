@@ -22,6 +22,7 @@ use React\EventLoop\Loop;
 use React\EventLoop\LoopInterface;
 use React\EventLoop\TimerInterface;
 use Webrtc\Codecs\Codec;
+use Webrtc\Codecs\EncodedPacket;
 use Webrtc\Codecs\CodecUtility;
 use Webrtc\Exception\InvalidArgumentException;
 use Webrtc\NTP\NetworkTimeProtocol;
@@ -83,6 +84,11 @@ class RTCRtpReceiver implements RtpReceiverInterface
     private ?int $rtcpSsrc = null;
     private ?LoggerInterface $logger = null;
     private ?DecoderQueue $decoderQueue = null;
+
+    /**
+     * Whether assembled frames are delivered still encoded, instead of being decoded to raw media.
+     */
+    private bool $rawMode = false;
     private LoopInterface $loop;
     private TimerInterface $rtcpTask;
 
@@ -129,6 +135,25 @@ class RTCRtpReceiver implements RtpReceiverInterface
      *
      * @return ?MediaStreamTrack The media track or null if not set.
      */
+    /**
+     * Deliver assembled frames without decoding them.
+     *
+     * Must be set before {@see self::start()}. In this mode the receiver never instantiates a
+     * decoder, so no native codec library is required.
+     */
+    public function setRawMode(bool $rawMode): void
+    {
+        $this->rawMode = $rawMode;
+    }
+
+    /**
+     * Whether assembled frames are delivered still encoded.
+     */
+    public function isRawMode(): bool
+    {
+        return $this->rawMode;
+    }
+
     public function getTrack(): ?MediaStreamTrack
     {
         return $this->track;
@@ -200,7 +225,7 @@ class RTCRtpReceiver implements RtpReceiverInterface
             return;
         }
 
-        if ($this->track) {
+        if ($this->track && !$this->rawMode) {
             $this->decoderQueue->start($this->track);
         }
 
@@ -273,10 +298,8 @@ class RTCRtpReceiver implements RtpReceiverInterface
      */
     private function handleRtcpSrPacket(RtcpSrPacket $packet): void
     {
-        $ntp128bitValue = gmp_init($packet->getSenderInfo()->getNtpTimestamp());
-        $shifted = gmp_div_q($ntp128bitValue, gmp_pow(2, 16));
-        $val = gmp_and($shifted, "0xFFFFFFFF");
-        $ntpTimestamp = intval(gmp_strval($val));
+        // The LSR field carries the middle 32 bits of the raw 64-bit NTP timestamp.
+        $ntpTimestamp = (((int) $packet->getSenderInfo()->getNtpTimestamp()) >> 16) & 0xFFFFFFFF;
 
         $this->stats->add(
             new RTCRemoteOutboundRtpStreamStats(
@@ -633,6 +656,16 @@ class RTCRtpReceiver implements RtpReceiverInterface
         }
 
         $encodedFrame->setTimestamp($this->timestampMapper->map($encodedFrame->getTimestamp()));
+
+        if ($this->rawMode) {
+            // Hand the assembled, still-encoded frame straight to the track: this avoids loading
+            // any codec at all, which is what lets calls work without the FFI extension.
+            $this->track?->queueFrame(new EncodedPacket(
+                $encodedFrame->getData(),
+                $encodedFrame->getTimestamp(),
+            ));
+            return;
+        }
 
         if (!$this->decoderQueue->getDecoder()) {
             $this->decoderQueue->setDecoder(Codec::getDecoder($codec));
