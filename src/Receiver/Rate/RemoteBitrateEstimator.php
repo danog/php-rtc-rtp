@@ -21,9 +21,9 @@ class RemoteBitrateEstimator
 {
 
     /** abs-send-time estimator */
-    private const int INTER_ARRIVAL_SHIFT = 26;
-    private const int TIMESTAMP_GROUP_LENGTH_MS = 5;
-    private const float TIMESTAMP_TO_MS = 1000.0 / (1 << self::INTER_ARRIVAL_SHIFT);
+    private const INTER_ARRIVAL_SHIFT = 26;
+    private const TIMESTAMP_GROUP_LENGTH_MS = 5;
+    private const TIMESTAMP_TO_MS = 1000.0 / (1 << self::INTER_ARRIVAL_SHIFT);
     private RateCounter $incomingBitrate;
     private bool $incomingBitrateInitialized = true;
     private InterArrival $interArrival;

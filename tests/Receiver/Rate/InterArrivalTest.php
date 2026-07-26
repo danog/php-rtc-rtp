@@ -14,12 +14,12 @@ use Webrtc\RTP\Receiver\Rate\TimestampGroup;
 #[CoversClass(InterArrival::class)]
 class InterArrivalTest extends TestCase
 {
-    private const int TIMESTAMP_GROUP_LENGTH_US = 5000;
-    private const int BURST_THRESHOLD_MS = 5;
-    private const int MIN_STEP_US = 20;
-    private const int START_RTP_TIMESTAMP_WRAP_US = 47721858827;
-    private const int START_ABS_SEND_TIME_WRAP_US = 63999995;
-    private const int TRIGGER_NEW_GROUP_US = self::TIMESTAMP_GROUP_LENGTH_US + self::MIN_STEP_US;
+    private const TIMESTAMP_GROUP_LENGTH_US = 5000;
+    private const BURST_THRESHOLD_MS = 5;
+    private const MIN_STEP_US = 20;
+    private const START_RTP_TIMESTAMP_WRAP_US = 47721858827;
+    private const START_ABS_SEND_TIME_WRAP_US = 63999995;
+    private const TRIGGER_NEW_GROUP_US = self::TIMESTAMP_GROUP_LENGTH_US + self::MIN_STEP_US;
     private InterArrival $interArrivalAst;
     private InterArrival $interArrivalRtp;
 

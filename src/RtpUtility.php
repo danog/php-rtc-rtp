@@ -25,9 +25,9 @@ use Webrtc\Exception\InvalidArgumentException;
  */
 class RtpUtility
 {
-    private const int MAX_SAMPLE_VALUE = 32767;
-    private const int MAX_AUDIO_LEVEL = 0;
-    private const int MIN_AUDIO_LEVEL = -127;
+    private const MAX_SAMPLE_VALUE = 32767;
+    private const MAX_AUDIO_LEVEL = 0;
+    private const MIN_AUDIO_LEVEL = -127;
 
     /**
      * Clamps the packets lost count to valid range.

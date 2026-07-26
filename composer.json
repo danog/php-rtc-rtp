@@ -24,7 +24,7 @@
         }
     ],
     "require": {
-        "php": "^8.4",
+        "php": "^8.2",
         "quasarstream/exception": "^1.0",
         "quasarstream/codecs": "^1.0",
         "quasarstream/rtp-parameter": "^1.0",

@@ -25,7 +25,7 @@ use Webrtc\RTP\HeaderExtension\HeaderExtensionsMap;
  */
 class RtpPacket
 {
-    private const int RTP_HEADER_LENGTH = 12;
+    private const RTP_HEADER_LENGTH = 12;
     private int $version = 2;
     private int $marker = 0;
     private int $payloadType = 0;

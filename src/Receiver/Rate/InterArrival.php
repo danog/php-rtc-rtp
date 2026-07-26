@@ -29,7 +29,7 @@ namespace Webrtc\RTP\Receiver\Rate;
 
 class InterArrival
 {
-    private const int BURST_DELTA_THRESHOLD_MS = 5;
+    private const BURST_DELTA_THRESHOLD_MS = 5;
     private int $groupLength;
     private float $timestampToMs;
     private ?TimestampGroup $currentGroup = null;

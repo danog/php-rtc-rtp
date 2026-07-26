@@ -69,7 +69,7 @@ use Webrtc\Stats\RTCStatsReport;
 class RTCRtpSender implements RtpSenderInterface
 {
     /** @var float Smoothing factor for RTT calculations */
-    private const float RTT_ALPHA = 0.85;
+    private const RTT_ALPHA = 0.85;
 
     /** @var MediaKind The kind of media (e.g., "audio" or "video") */
     private MediaKind $kind;
@@ -99,7 +99,7 @@ class RTCRtpSender implements RtpSenderInterface
      * shortest packetization time in use is 10ms, so polling an order of magnitude faster than
      * that keeps jitter negligible while leaving the CPU idle.
      */
-    private const float POLL_INTERVAL = 0.001;
+    private const POLL_INTERVAL = 0.001;
 
     /** @var EncoderInterface|null The encoder for media frames */
     private ?EncoderInterface $encoder = null;

@@ -41,7 +41,7 @@ class DecoderQueue
      * @var DecoderInterface|null Decoder used for decoding frames.
      */
     /** How often the queue is drained; see RTCRtpSender::POLL_INTERVAL. */
-    private const float POLL_INTERVAL = 0.001;
+    private const POLL_INTERVAL = 0.001;
 
     private ?DecoderInterface $decoder = null;
 

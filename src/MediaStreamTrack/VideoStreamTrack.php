@@ -33,14 +33,14 @@ class VideoStreamTrack extends MediaStreamTrack
      *
      * @var int
      */
-    private const int VIDEO_CLOCK_RATE = 90000;
+    private const VIDEO_CLOCK_RATE = 90000;
 
     /**
      * The time per frame for 30 fps video.
      *
      * @var int|float
      */
-    private const int|float VIDEO_PTIME = 1 / 30;  // 30 fps
+    private const VIDEO_PTIME = 1 / 30;  // 30 fps
 
     /**
      * The kind of media track (video).

@@ -198,7 +198,7 @@ class RTCRtpTransceiver
             return;
         }
 
-        $capabilities = new Codec()->getCapabilities($this->kind->value)->codecs;
+        $capabilities = (new Codec())->getCapabilities($this->kind->value)->codecs;
         $unique = [];
         foreach (array_reverse($codecs) as $codec) {
             if (!in_array($codec, $capabilities)) {

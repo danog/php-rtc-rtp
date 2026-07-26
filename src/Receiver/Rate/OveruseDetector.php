@@ -18,8 +18,8 @@ use Webrtc\RTP\Enum\BandwidthUsage;
  * Adapted from the webrtc.org codebase.
  */
 class OveruseDetector {
-    const int MAX_ADAPT_OFFSET_MS = 15;
-    const int MIN_NUM_DELTAS = 60;
+    const MAX_ADAPT_OFFSET_MS = 15;
+    const MIN_NUM_DELTAS = 60;
     private BandwidthUsage $hypothesis = BandwidthUsage::NORMAL;
     private ?int $lastUpdateMs = null;
     private float $kUp = 0.0087;

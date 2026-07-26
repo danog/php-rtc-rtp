@@ -30,7 +30,7 @@ class AudioStreamTrack extends MediaStreamTrack
     /**
      * The audio packet time (ptime) in seconds, typically 20 ms for audio streams.
      */
-    private const float AUDIO_PTIME = 0.02;
+    private const AUDIO_PTIME = 0.02;
 
     /**
      * The media kind, which is Audio in this case.

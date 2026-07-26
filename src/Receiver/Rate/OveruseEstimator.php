@@ -26,10 +26,10 @@ use Webrtc\RTP\Enum\BandwidthUsage;
 class OveruseEstimator {
 
     /** Minimum number of deltas to keep */
-    const int MIN_NUM_DELTAS = 1000;
+    const MIN_NUM_DELTAS = 1000;
 
     /** Minimum number of frame intervals to store for frame period estimation */
-    const int MIN_FRAME_PERIOD_HISTORY_LENGTH = 60;
+    const MIN_FRAME_PERIOD_HISTORY_LENGTH = 60;
 
     /** Error covariance matrix for Kalman filter */
     private array $E = [[100.0, 0.0], [0.0, 0.1]];

@@ -28,7 +28,7 @@ class JitterBuffer
     /**
      * Maximum sequence number misordering tolerated before the buffer resets.
      */
-    private const int MAX_MISORDER = 100;
+    private const MAX_MISORDER = 100;
 
     private ?int $origin = null;
 
