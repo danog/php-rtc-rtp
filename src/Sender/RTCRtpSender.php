@@ -16,9 +16,7 @@ use Exception;
 use Psr\Log\LoggerInterface;
 use Ramsey\Uuid\Uuid;
 use Random\RandomException;
-use React\EventLoop\Loop;
-use React\EventLoop\LoopInterface;
-use React\EventLoop\TimerInterface;
+use Revolt\EventLoop;
 use Throwable;
 use Webrtc\AVCodec\Frame\AudioFrame;
 use Webrtc\AVCodec\Frame\FrameInterface;
@@ -149,11 +147,7 @@ class RTCRtpSender implements RtpSenderInterface
     /** @var int|null The payload type for RTX packets */
     private ?int $rtxPayloadType = null;
 
-    /** @var LoopInterface The event loop for RTCP tasks */
-    private LoopInterface $rtcpLoop;
 
-    /** @var LoopInterface The event loop for RTP tasks */
-    private LoopInterface $rtpLoop;
 
     /** @var RTCRtpCodecParameters The codec parameters */
     private RTCRtpCodecParameters $codec;
@@ -161,11 +155,11 @@ class RTCRtpSender implements RtpSenderInterface
     /** @var LoggerInterface|null The logger instance */
     private ?LoggerInterface $logger = null;
 
-    /** @var TimerInterface The RTCP timer task */
-    private TimerInterface $rtcpTask;
+    /** @var string Handle of The RTCP timer task */
+    private string $rtcpTask;
 
-    /** @var TimerInterface The RTP timer task */
-    private TimerInterface $rtpTask;
+    /** @var string Handle of The RTP timer task */
+    private string $rtpTask;
 
     /** @var int The current RTP sequence number */
     private int $sequenceNumber;
@@ -190,8 +184,6 @@ class RTCRtpSender implements RtpSenderInterface
             throw new InvalidArgumentException("Transport is closed");
         }
 
-        $this->rtcpLoop = Loop::get();
-        $this->rtpLoop = Loop::get();
         if ($trackOrKind instanceof MediaStreamTrack) {
             $this->kind = $trackOrKind->getKind();
             $this->replaceTrack($trackOrKind);
@@ -318,7 +310,7 @@ class RTCRtpSender implements RtpSenderInterface
      */
     private function stopRtcpTask(): void
     {
-        $this->rtcpLoop->cancelTimer($this->rtcpTask);
+        EventLoop::cancel($this->rtcpTask);
         $byePacket = new RtcpByePacket([$this->ssrc]);
         $this->sendRtcpPacket([$byePacket]);
 
@@ -335,7 +327,7 @@ class RTCRtpSender implements RtpSenderInterface
             $this->track = null;
         }
         $this->encoder = null;
-        $this->rtpLoop->cancelTimer($this->rtpTask);
+        EventLoop::cancel($this->rtpTask);
 
         $this->log(" RTP has ended.");
     }
@@ -350,7 +342,7 @@ class RTCRtpSender implements RtpSenderInterface
         $this->log("Start RTP task");
         $this->sequenceNumber = $this->generateSequenceNumber();
         $this->orgTimestamp = random_int(0, 0xFFFFFFFF);
-        $this->rtpTask = $this->rtpLoop->addPeriodicTimer(self::POLL_INTERVAL, function () {
+        $this->rtpTask = EventLoop::repeat(self::POLL_INTERVAL, function () {
             if (!$this->track) {
                 return;
             }
@@ -479,7 +471,7 @@ class RTCRtpSender implements RtpSenderInterface
     {
         $this->log("RTCP started");
 
-        $this->rtcpTask = $this->rtcpLoop->addPeriodicTimer(0.5 + (random_int(0, 1000) / 1000), function () {
+        $this->rtcpTask = EventLoop::repeat(0.5 + (random_int(0, 1000) / 1000), function () {
             try {
                 $rtcpPackets = $this->generateRtcpPackets();
                 $this->sendRtcpPacket($rtcpPackets);

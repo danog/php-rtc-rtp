@@ -43,7 +43,7 @@ use Webrtc\Stats\RTCRemoteOutboundRtpStreamStats;
 use Webrtc\Stats\RTCStatsReport;
 use Webrtc\Stats\RTCTransportStats;
 use function PHPUnit\Framework\assertEquals;
-use function React\Async\delay;
+use function Amp\delay;
 
 #[UsesClass(JitterBuffer::class)]
 #[UsesClass(MediaStreamTrack::class)]

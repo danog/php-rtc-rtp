@@ -18,9 +18,7 @@ use DateTimeImmutable;
 use Exception;
 use Psr\Log\LoggerInterface;
 use Random\RandomException;
-use React\EventLoop\Loop;
-use React\EventLoop\LoopInterface;
-use React\EventLoop\TimerInterface;
+use Revolt\EventLoop;
 use Webrtc\Codecs\Codec;
 use Webrtc\Codecs\EncodedPacket;
 use Webrtc\Codecs\CodecUtility;
@@ -89,8 +87,7 @@ class RTCRtpReceiver implements RtpReceiverInterface
      * Whether assembled frames are delivered still encoded, instead of being decoded to raw media.
      */
     private bool $rawMode = false;
-    private LoopInterface $loop;
-    private TimerInterface $rtcpTask;
+    private string $rtcpTask;
 
     /**
      * Constructor for RTCRtpReceiver.
@@ -114,7 +111,6 @@ class RTCRtpReceiver implements RtpReceiverInterface
         $this->timestampMapper = new TimestampMapper();
         $this->decoderQueue = new DecoderQueue();
 
-        $this->loop = Loop::get();
     }
 
     /**
@@ -268,7 +264,7 @@ class RTCRtpReceiver implements RtpReceiverInterface
         $this->transport->removeRtpReceiver($this);
 
         // Cancel RTCP periodic task
-        $this->loop->cancelTimer($this->rtcpTask);
+        EventLoop::cancel($this->rtcpTask);
         $this->log(" RTCP has ended.");
         $this->finishUpRtp();
     }
@@ -510,7 +506,7 @@ class RTCRtpReceiver implements RtpReceiverInterface
     {
         $this->log(" RTCP started");
 
-        $this->rtcpTask = $this->loop->addPeriodicTimer(0.5 + (random_int(0, 1000) / 1000), function () {
+        $this->rtcpTask = EventLoop::repeat(0.5 + (random_int(0, 1000) / 1000), function () {
             try {
                 $rtcpPackets = $this->generateRtcpRrPacket();
                 if ($rtcpPackets) {

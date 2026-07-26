@@ -11,10 +11,7 @@
 
 namespace Webrtc\RTP\Receiver;
 
-use React\EventLoop\Loop;
-use React\EventLoop\LoopInterface;
-use React\EventLoop\TimerInterface;
-use React\Promise\Promise;
+use Revolt\EventLoop;
 use SplQueue;
 use Webrtc\Codecs\DecoderInterface;
 use Webrtc\RTP\Jitter\JitterFrame;
@@ -33,9 +30,9 @@ class DecoderQueue
     private ?SplQueue $queue;
 
     /**
-     * @var TimerInterface Task for processing the frame queue periodically.
+     * @var string Handle of the task processing the frame queue periodically.
      */
-    private TimerInterface $queueTask;
+    private string $queueTask;
 
     /**
      * @var DecoderInterface|null Decoder used for decoding frames.
@@ -45,10 +42,6 @@ class DecoderQueue
 
     private ?DecoderInterface $decoder = null;
 
-    /**
-     * @var LoopInterface Event loop for scheduling asynchronous tasks.
-     */
-    private LoopInterface $loop;
 
     /**
      * DecoderQueue constructor.
@@ -58,7 +51,6 @@ class DecoderQueue
     public function __construct()
     {
         $this->queue = new SplQueue();
-        $this->loop = Loop::get();
     }
 
     /**
@@ -78,7 +70,7 @@ class DecoderQueue
      */
     public function start(RemoteStreamTrack $track): void
     {
-        $this->queueTask = $this->loop->addPeriodicTimer(self::POLL_INTERVAL, function () use ($track) {
+        $this->queueTask = EventLoop::repeat(self::POLL_INTERVAL, function () use ($track) {
             if ($this->queue->isEmpty()) {
                 return;
             }
@@ -125,7 +117,7 @@ class DecoderQueue
     private function decodeFrameAsync(JitterFrame $frame): Promise
     {
         return new Promise(function ($resolve) use ($frame) {
-            $this->loop->futureTick(function () use ($resolve, $frame) {
+            EventLoop::queue(function () use ($resolve, $frame) {
                 $resolve($this->decoder->decode($frame));
             });
         });
@@ -139,7 +131,7 @@ class DecoderQueue
         $this->queue = null;
         // The task is only scheduled by start(), which is skipped in raw (no-decode) mode.
         if (isset($this->queueTask)) {
-            $this->loop->cancelTimer($this->queueTask);
+            EventLoop::cancel($this->queueTask);
         }
     }
 }
