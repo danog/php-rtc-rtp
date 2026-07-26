@@ -162,6 +162,12 @@ class RTPUtilityTest extends TestCase
 
     public function testComputeAudioLevelDbov()
     {
+        if (!AVCodec::isAvailable()) {
+            self::markTestSkipped(
+                'Transcoding needs the FFI extension and an FFmpeg build matching the bundled headers.'
+            );
+        }
+
         self::assertFalse(false);
         AVCodec::init();
         $numSamples = 960; // 20ms @ 48kHz

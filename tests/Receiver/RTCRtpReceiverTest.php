@@ -144,6 +144,12 @@ class RTCRtpReceiverTest extends TestCase
 
     public function testRtpAndRtcp()
     {
+        if (!AVCodec::isAvailable()) {
+            self::markTestSkipped(
+                'Transcoding needs the FFI extension and an FFmpeg build matching the bundled headers.'
+            );
+        }
+
         $receiver = new RTCRtpReceiver(MediaKind::Audio, $this->transportMock);
         $remoteTrack = new RemoteStreamTrack(MediaKind::Audio);
         $receiver->setTrack($remoteTrack);
@@ -205,6 +211,12 @@ class RTCRtpReceiverTest extends TestCase
 
     public function testRtpMissingVideoPacket()
     {
+        if (!AVCodec::isAvailable()) {
+            self::markTestSkipped(
+                'Transcoding needs the FFI extension and an FFmpeg build matching the bundled headers.'
+            );
+        }
+
         AVCodec::init(true);
         $this->transportMock->resetRtcpPackets();
         $receiver = new RTCRtpReceiver(MediaKind::Video, $this->transportMock);

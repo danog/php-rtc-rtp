@@ -152,6 +152,12 @@ class RTCRtpSenderTest extends TestCase
 
     public function testRetransmitWithRtx(): void
     {
+        if (!AVCodec::isAvailable()) {
+            self::markTestSkipped(
+                'Transcoding needs the FFI extension and an FFmpeg build matching the bundled headers.'
+            );
+        }
+
         AVCodec::init(true);
         $rtpRtxParameters = $this->getRTCRtpRtxSendParameters();
         $sender = new RTCRtpSender(new VideoStreamTrack(), $this->transportMock);
