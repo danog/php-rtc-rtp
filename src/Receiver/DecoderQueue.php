@@ -75,16 +75,14 @@ class DecoderQueue
                 return;
             }
 
-            $encodedData = $this->queue->dequeue();
-            $this->decodeFrameAsync($encodedData)->then(function ($decodedFrame) use ($track) {
-                if (is_array($decodedFrame)) {
-                    foreach ($decodedFrame as $frame) {
-                        $track->queueFrame($frame);
-                    }
-                    return;
+            $decodedFrame = $this->decoder->decode($this->queue->dequeue());
+            if (is_array($decodedFrame)) {
+                foreach ($decodedFrame as $frame) {
+                    $track->queueFrame($frame);
                 }
-                $track->queueFrame($decodedFrame);
-            });
+                return;
+            }
+            $track->queueFrame($decodedFrame);
         });
     }
 
@@ -106,21 +104,6 @@ class DecoderQueue
     public function setDecoder(?DecoderInterface $decoder): void
     {
         $this->decoder = $decoder;
-    }
-
-    /**
-     * Decodes a frame asynchronously.
-     *
-     * @param JitterFrame $frame The frame to decode.
-     * @return Promise A promise that resolves with the decoded data.
-     */
-    private function decodeFrameAsync(JitterFrame $frame): Promise
-    {
-        return new Promise(function ($resolve) use ($frame) {
-            EventLoop::queue(function () use ($resolve, $frame) {
-                $resolve($this->decoder->decode($frame));
-            });
-        });
     }
 
     /**

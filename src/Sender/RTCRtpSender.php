@@ -99,6 +99,16 @@ class RTCRtpSender implements RtpSenderInterface
      */
     private const POLL_INTERVAL = 0.001;
 
+    /**
+     * Loudness, in -dBov, at or below which a packet still counts as carrying speech.
+     *
+     * Used to fill in the voice activity bit of the RFC 6464 audio level extension. Levels are
+     * inverted, so a smaller number is louder and 127 is digital silence; -60dBov is quiet enough
+     * to be inaudible in practice, which makes it a reasonable floor for a sender that has no real
+     * voice activity detector.
+     */
+    private const SILENCE_LEVEL_DBOV = 60;
+
     /** @var EncoderInterface|null The encoder for media frames */
     private ?EncoderInterface $encoder = null;
 
@@ -272,7 +282,7 @@ class RTCRtpSender implements RtpSenderInterface
         $this->headerExtensionsMap->configure($parameters);
 
         foreach ($parameters->codecs as $codec) {
-            if (CodecUtility::isRtx($codec) && $codec->parameters["apt"] === $parameters->codecs[0]->payloadType) {
+            if (CodecUtility::isRtx($codec) && CodecUtility::apt($codec) === $parameters->codecs[0]->payloadType) {
                 $this->rtxPayloadType = $codec->payloadType;
                 break;
             }
@@ -428,7 +438,15 @@ class RTCRtpSender implements RtpSenderInterface
         $packet->getExtensions()->setAbsSendTime((($ntpTime >> 14) & 0x00FFFFFF));
         $packet->getExtensions()->setMid($this->mid);
         if ($encodedFrame->getAudioLevel()) {
-            $packet->getExtensions()->setAudioLevel([false, -$encodedFrame->getAudioLevel()]);
+            // RFC 6464 carries the loudness as 0..127 in -dBov, 0 being the loudest. Clamp rather
+            // than let an out of range value wrap into a nonsensical one.
+            $level = min(127, max(0, -$encodedFrame->getAudioLevel()));
+            // The V bit reports voice activity, and the extension is negotiated with "vad=on"
+            // unless the attribute says otherwise, so a sender that leaves it clear is telling the
+            // receiver it is silent on every single packet. Selective forwarding units use exactly
+            // that to decide whose audio to relay, so anything above the silence floor has to
+            // report activity.
+            $packet->getExtensions()->setAudioLevel([$level <= self::SILENCE_LEVEL_DBOV, $level]);
         }
 
         return $packet;
