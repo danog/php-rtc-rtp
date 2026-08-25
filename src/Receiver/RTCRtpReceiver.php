@@ -309,7 +309,10 @@ class RTCRtpReceiver implements RtpReceiverInterface
                 packetsSent: $packet->getSenderInfo()->getPacketCount(),
                 bytesSent: $packet->getSenderInfo()->getOctetCount(),
                 // RTCRemoteOutboundRtpStreamStats
-                remoteTimestamp: NetworkTimeProtocol::toDatetime($packet->getSenderInfo()->getNtpTimestamp()),
+                remoteTimestamp: NetworkTimeProtocol::toDatetime(
+                    $packet->getSenderInfo()->getNtpTimestampHigh(),
+                    $packet->getSenderInfo()->getNtpTimestampLow(),
+                ),
             )
         );
 

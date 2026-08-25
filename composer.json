@@ -39,7 +39,6 @@
         "ramsey/uuid": "^4.7"
     },
     "require-dev": {
-        "phpunit/php-code-coverage": "11.0.x-dev",
         "phpunit/phpunit": "^11.3",
         "symfony/phpunit-bridge": "7.3.x-dev"
     },
