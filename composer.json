@@ -26,13 +26,13 @@
     "require": {
         "php": "^8.2",
         "amphp/amp": "^3.1",
-        "quasarstream/exception": "^1.0",
-        "quasarstream/codecs": "^1.0",
-        "quasarstream/rtp-parameter": "^1.0",
-        "quasarstream/rtcp": "^1.0",
-        "quasarstream/stats": "^1.0",
-        "quasarstream/ntp": "^1.0",
-        "quasarstream/sdp": "^1.0",
+        "danog/php-rtc-exception": "^1.0",
+        "danog/php-rtc-codecs": "^1.0",
+        "danog/php-rtc-rtp-parameter": "^1.0",
+        "danog/php-rtc-rtcp": "^1.0",
+        "danog/php-rtc-stats": "^1.0",
+        "danog/php-rtc-ntp": "^1.0",
+        "danog/php-rtc-sdp": "^1.0",
         "ramsey/uuid": "^4.7"
     },
     "require-dev": {
@@ -50,8 +50,5 @@
             "Tests\\Webrtc\\RTP\\": "tests"
         }
     },
-    "minimum-stability": "dev",
-    "replace": {
-        "quasarstream/rtp": "self.version"
-    }
+    "minimum-stability": "dev"
 }

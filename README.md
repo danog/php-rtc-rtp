@@ -9,7 +9,7 @@ A PHP library for handling RTP (Real-time Transport Protocol) packets. This pack
 
 This is the `danog/php-rtc-rtp` fork used by MadelineProto. It targets PHP 8.2+, ports media scheduling from ReactPHP promises to Amp v3 fibers and Revolt timers, avoids busy-loop polling, and reports voice activity through the negotiated RTP audio-level extension. Already-encoded media can be packetized without FFI.
 
-The forked stack keeps the upstream `quasarstream/*` dependency constraints for compatibility. Each `danog/php-rtc-*` package replaces its upstream counterpart, so consumers select the complete maintained stack by requiring the corresponding danog packages together.
+All internal Composer dependencies use their `danog/php-rtc-*` package names directly, so installing a component selects the maintained danog packages throughout the dependency graph.
 
 ##  Features
 
