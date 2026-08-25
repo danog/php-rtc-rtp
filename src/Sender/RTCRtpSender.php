@@ -432,9 +432,9 @@ class RTCRtpSender implements RtpSenderInterface
         $packet->setMarker(($i === count($encodedFrame->getPayloads()) - 1) ? 1 : 0);
 
         // Set header extensions
-        $ntpTime = NetworkTimeProtocol::currentNtpTime();
+        [$ntpTimeHi, $ntpTimeLo] = NetworkTimeProtocol::currentNtpTime();
         // abs-send-time is a 6.18 fixed point value: bits 14..37 of the raw NTP timestamp.
-        $packet->getExtensions()->setAbsSendTime((($ntpTime >> 14) & 0x00FFFFFF));
+        $packet->getExtensions()->setAbsSendTime((($ntpTimeLo >> 14) & 0x00FFFFFF));
         $packet->getExtensions()->setMid($this->mid);
         if ($encodedFrame->getAudioLevel()) {
             // RFC 6464 carries the loudness as 0..127 in -dBov, 0 being the loudest. Clamp rather
@@ -473,7 +473,7 @@ class RTCRtpSender implements RtpSenderInterface
      */
     private function updateStatistics(RtpPacket $packet, string $payload): void
     {
-        $this->ntpTimestamp = NetworkTimeProtocol::currentNtpTime();
+        [$this->ntpTimestampHigh, $this->ntpTimestampLow] = NetworkTimeProtocol::currentNtpTime();
         $this->rtpTimestamp = $packet->getTimestamp();
         $this->octetCount += strlen($payload);
         $this->packetCount++;
@@ -507,8 +507,8 @@ class RTCRtpSender implements RtpSenderInterface
     {
         $packets = [$this->generateRtcpSrPacket()];
 
-        $ntpTimestampHigh = ($this->ntpTimestamp >> 32) & 0xFFFFFFFF;
-        $ntpTimestampLow = $this->ntpTimestamp & 0xFFFFFFFF;
+        $ntpTimestampHigh = ($this->ntpTimestampHigh >> 32) & 0xFFFFFFFF;
+        $ntpTimestampLow = $this->ntpTimestampLow & 0xFFFFFFFF;
 
         // The LSR field carries the middle 32 bits of the raw NTP timestamp.
         $this->lsr = (($ntpTimestampHigh & 0xFFFF) << 16) | ($ntpTimestampLow >> 16);
@@ -532,8 +532,8 @@ class RTCRtpSender implements RtpSenderInterface
         return new RtcpSrPacket(
             ssrc: $this->ssrc,
             senderInfo: new RtcpSenderInfo(
-                ntpTimestampHigh: ($this->ntpTimestamp >> 32) & 0xFFFFFFFF,
-                ntpTimestampLow: $this->ntpTimestamp & 0xFFFFFFFF,
+                ntpTimestampHigh: $this->ntpTimestampHigh,
+                ntpTimestampLow: $this->ntpTimestampLow,
                 rtpTimestamp: $this->rtpTimestamp,
                 packetCount: $this->packetCount,
                 octetCount: $this->octetCount
