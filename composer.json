@@ -1,7 +1,7 @@
 {
     "name": "danog/php-rtc-rtp",
     "type": "library",
-    "description": "A PHP library for handling RTP (Real-time Transport Protocol) packets. Fork with FFI made optional and a pure-PHP DTLS/SRTP stack, maintained for MadelineProto.",
+    "description": "RTP packet and media transport handling for PHP, ported to Amp v3. MadelineProto's PHP 8.2+ fork supports optional media FFI in the modular danog/php-rtc stack.",
     "keywords": [
         "webrtc",
         "rtp",

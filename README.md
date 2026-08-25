@@ -1,9 +1,15 @@
 # RTP Library for PHP
 
-[![PHP Version](https://img.shields.io/badge/php-%3E%3D8.4-blue.svg)](https://php.net/)
+[![PHP Version](https://img.shields.io/badge/php-%3E%3D8.2-blue.svg)](https://php.net/)
 [![License](https://img.shields.io/badge/license-BSD-blue.svg)](LICENSE)
 
 A PHP library for handling RTP (Real-time Transport Protocol) packets. This package provides tools for encoding, decoding, parsing, and analyzing RTP streams—useful for WebRTC, VoIP, and media streaming applications.
+
+## About this fork
+
+This is the `danog/php-rtc-rtp` fork used by MadelineProto. It targets PHP 8.2+, ports media scheduling from ReactPHP promises to Amp v3 fibers and Revolt timers, avoids busy-loop polling, and reports voice activity through the negotiated RTP audio-level extension. Already-encoded media can be packetized without FFI.
+
+The forked stack keeps the upstream `quasarstream/*` dependency constraints for compatibility. Each `danog/php-rtc-*` package replaces its upstream counterpart, so consumers select the complete maintained stack by requiring the corresponding danog packages together.
 
 ##  Features
 
@@ -14,7 +20,8 @@ A PHP library for handling RTP (Real-time Transport Protocol) packets. This pack
 
 ## Requirements
 
-- **PHP ≥ 8.4** with FFI extension enabled
+- **PHP ≥ 8.2**
+- FFI and native codec libraries only when encoding, decoding, or transcoding media
 - Linux (Windows and macOS support planned for future releases)
 - FFmpeg/libav shared libraries (libavcodec, libavfilter, etc.)
   - Compatible with FFmpeg **version 7.1.1**
