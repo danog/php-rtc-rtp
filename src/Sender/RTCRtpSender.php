@@ -130,8 +130,7 @@ class RTCRtpSender implements RtpSenderInterface
     /** @var int|null The last sender report NTP timestamp */
     private ?int $lsr = null;
 
-    /** @var int|string The NTP timestamp for RTP */
-    private int|string $ntpTimestamp = 0;
+    private int $ntpTimestamp = 0;
 
     /** @var int The RTP timestamp */
     private int $rtpTimestamp = 0;
@@ -508,8 +507,11 @@ class RTCRtpSender implements RtpSenderInterface
     {
         $packets = [$this->generateRtcpSrPacket()];
 
+        $ntpTimestampHigh = ($this->ntpTimestamp >> 32) & 0xFFFFFFFF;
+        $ntpTimestampLow = $this->ntpTimestamp & 0xFFFFFFFF;
+
         // The LSR field carries the middle 32 bits of the raw NTP timestamp.
-        $this->lsr = (((int) $this->ntpTimestamp) >> 16) & 0xFFFFFFFF;
+        $this->lsr = (($ntpTimestampHigh & 0xFFFF) << 16) | ($ntpTimestampLow >> 16);
         $this->lsrTime = microtime(true);
 
         // Generate RTCP SDES packet
@@ -530,7 +532,8 @@ class RTCRtpSender implements RtpSenderInterface
         return new RtcpSrPacket(
             ssrc: $this->ssrc,
             senderInfo: new RtcpSenderInfo(
-                ntpTimestamp: $this->ntpTimestamp,
+                ntpTimestampHigh: ($this->ntpTimestamp >> 32) & 0xFFFFFFFF,
+                ntpTimestampLow: $this->ntpTimestamp & 0xFFFFFFFF,
                 rtpTimestamp: $this->rtpTimestamp,
                 packetCount: $this->packetCount,
                 octetCount: $this->octetCount

@@ -99,6 +99,9 @@ class RTCRtpReceiverTest extends TestCase
             [
                 new RTCRtpCodecCapability("video/VP8", 90000),
                 new RTCRtpCodecCapability("video/rtx", 90000),
+                new RTCRtpCodecCapability("video/VP9", 90000, parameters: [
+                    "profile-id" => "0",
+                ]),
                 new RTCRtpCodecCapability("video/H264", 90000, parameters: [
                     "level-asymmetry-allowed" => "1",
                     "packetization-mode" => "1",
@@ -502,4 +505,3 @@ class RTCRtpReceiverTest extends TestCase
         ]);
     }
 }
-

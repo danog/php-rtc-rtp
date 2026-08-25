@@ -294,8 +294,12 @@ class RTCRtpReceiver implements RtpReceiverInterface
      */
     private function handleRtcpSrPacket(RtcpSrPacket $packet): void
     {
+        $senderInfo = $packet->getSenderInfo();
+        $ntpHigh = $senderInfo->getNtpTimestampHigh();
+        $ntpLow = $senderInfo->getNtpTimestampLow();
+
         // The LSR field carries the middle 32 bits of the raw 64-bit NTP timestamp.
-        $ntpTimestamp = (((int) $packet->getSenderInfo()->getNtpTimestamp()) >> 16) & 0xFFFFFFFF;
+        $ntpTimestamp = (($ntpHigh & 0xFFFF) << 16) | ($ntpLow >> 16);
 
         $this->stats->add(
             new RTCRemoteOutboundRtpStreamStats(
@@ -310,8 +314,8 @@ class RTCRtpReceiver implements RtpReceiverInterface
                 bytesSent: $packet->getSenderInfo()->getOctetCount(),
                 // RTCRemoteOutboundRtpStreamStats
                 remoteTimestamp: NetworkTimeProtocol::toDatetime(
-                    $packet->getSenderInfo()->getNtpTimestampHigh(),
-                    $packet->getSenderInfo()->getNtpTimestampLow(),
+                    $ntpHigh,
+                    $ntpLow,
                 ),
             )
         );

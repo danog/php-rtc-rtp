@@ -50,7 +50,7 @@ class RtpRouterTest extends TestCase
         // SR
         $packet = new RtcpSrPacket(
             1234,
-            new RtcpSenderInfo(0, 0, 0, 0),
+            new RtcpSenderInfo(0, 0, 0, 0, 0),
             [
                 new RtcpReceiverInfo(3456, 0, 0, 630, 1906, 0, 0)
             ]
