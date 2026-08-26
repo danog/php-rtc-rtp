@@ -12,6 +12,8 @@
 namespace Webrtc\RTP\MediaStreamTrack;
 
 use Amp\Cancellation;
+use Amp\Pipeline\ConcurrentIterator;
+use Amp\Pipeline\Queue;
 use Evenement\EventEmitter;
 use Ramsey\Uuid\Uuid;
 use Webrtc\AVCodec\Data\Packet;
@@ -34,14 +36,7 @@ abstract class MediaStreamTrack extends EventEmitter
      *
      * @var MediaKind
      */
-    protected MediaKind $kind = MediaKind::Unknown;
-
-    /**
-     * Whether the track has ended.
-     *
-     * @var bool
-     */
-    protected bool $ended = false;
+    protected MediaKind $kind;
 
     /**
      * A unique ID for the track.
@@ -51,13 +46,24 @@ abstract class MediaStreamTrack extends EventEmitter
     protected string $id;
 
     /**
+     * A queue to hold frames for the track.
+     *
+     * @var Queue
+     */
+    protected Queue $frameQueue;
+
+    private bool $stopped = false;
+
+    /**
      * MediaStreamTrack constructor.
      *
      * Initializes the track with a unique ID generated using UUID.
      */
-    public function __construct()
+    public function __construct(MediaKind $kind, ?string $id = null)
     {
-        $this->id = Uuid::uuid4()->toString();
+        $this->id = $id ?? Uuid::uuid4()->toString();
+        $this->frameQueue = new Queue();
+        $this->kind = $kind;
     }
 
     /**
@@ -78,11 +84,14 @@ abstract class MediaStreamTrack extends EventEmitter
      */
     public function stop(): void
     {
-        if (!$this->ended) {
-            $this->ended = true;
-            $this->emit("ended");
-            $this->removeAllListeners();
+        if ($this->stopped) {
+            return;
         }
+
+        $this->stopped = true;
+        $this->frameQueue->complete();
+        $this->emit("ended");
+        $this->removeAllListeners();
     }
 
     /**
@@ -106,22 +115,14 @@ abstract class MediaStreamTrack extends EventEmitter
     }
 
     /**
-     * Checks whether the track has ended.
-     *
-     * @return bool True if the track has ended, false otherwise.
-     */
-    public function isEnded(): bool
-    {
-        return $this->ended;
-    }
-
-    /**
      * Receives and returns the next frame or packet from the track.
      *
      * This is an abstract method that subclasses must implement.
      * It handles the retrieval or generation of the next frame or packet.
      *
-     * @return FrameInterface|Packet|EncodedPacket|null The next frame or packet, or null if the queue is empty.
+     * @return ConcurrentIterator<FrameInterface|Packet|EncodedPacket> The next frame or packet
      */
-    abstract public function receiveData(?Cancellation $cancellation = null): FrameInterface|Packet|EncodedPacket|null;
+    final public function getConsumer(): ConcurrentIterator {
+        return $this->frameQueue->iterate();
+    }
 }

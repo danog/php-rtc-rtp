@@ -159,9 +159,6 @@ class RTCRtpSender implements RtpSenderInterface
     /** @var string Handle of The RTCP timer task */
     private string $rtcpTask;
 
-    /** @var string Handle of The RTP timer task */
-    private string $rtpTask;
-
     /** @var int The current RTP sequence number */
     private int $sequenceNumber;
 
@@ -328,8 +325,6 @@ class RTCRtpSender implements RtpSenderInterface
             $this->track = null;
         }
         $this->encoder = null;
-        EventLoop::cancel($this->rtpTask);
-
         $this->log(" RTP has ended.");
     }
 
@@ -343,66 +338,38 @@ class RTCRtpSender implements RtpSenderInterface
         $this->log("Start RTP task");
         $this->sequenceNumber = $this->generateSequenceNumber();
         $this->orgTimestamp = random_int(0, 0xFFFFFFFF);
-        $this->rtpTask = EventLoop::repeat(self::POLL_INTERVAL, function () {
-            if (!$this->track) {
-                return;
-            }
-            $encodedFrame = $this->getNextEncodedFrame();
-            if ($encodedFrame === null) {
-                return;
-            }
+        EventLoop::queue(function () {
+            foreach ($this->track->getConsumer() as $data) {
+                $audioLevel = null;
+                if ($data instanceof EncodedPacket) {
+                    $audioLevel = $data->getAudioLevel();
+                }
+                if ($data instanceof FrameInterface) {
+                    if ($data instanceof AudioFrame) {
+                        $audioLevel = RtpUtility::computeAudioLevelDbov($data->getPlanes()[0]->getData(), $data->getSamples());
+                    }
+                    $useKeyFrame = $this->useKeyframe;
+                    $this->useKeyframe = false;
+                    $this->encoder ??= Codec::getEncoder($this->codec);
+                    [$payloads, $timestamp] = $this->encoder->encode($data, $useKeyFrame);
+                } else {
+                    $this->encoder ??= Codec::getEncoder($this->codec);
+                    [$payloads, $timestamp] = $this->encoder->pack($data);
+                }
 
-            for ($i = 0; $i < count($encodedFrame->getPayloads()); $i++) {
-                $rtpPacket = $this->generateRtpPacket($encodedFrame, $i);
-                $this->sendRtpPacket($rtpPacket);
-                $this->updateStatistics($rtpPacket, $encodedFrame->getPayloads()[$i]);
-                $this->sequenceNumber = ($this->sequenceNumber + 1) & 0xFFFF;
+                if (empty($payloads)) {
+                    continue;
+                }
+
+                $data = new RTCEncodedFrame($payloads, $timestamp, $audioLevel);
+                for ($i = 0; $i < count($data->getPayloads()); $i++) {
+                    $rtpPacket = $this->generateRtpPacket($data, $i);
+                    $this->sendRtpPacket($rtpPacket);
+                    $this->updateStatistics($rtpPacket, $data->getPayloads()[$i]);
+                    $this->sequenceNumber = ($this->sequenceNumber + 1) & 0xFFFF;
+                }
             }
         });
-    }
-
-    /**
-     * Gets the next encoded frame from the track.
-     *
-     * @return RTCEncodedFrame|null The encoded frame or null if no frame is available
-     */
-    private function getNextEncodedFrame(): ?RTCEncodedFrame
-    {
-        if (!$this->enabled) {
-            return null;
-        }
-
-        $audioLevel = null;
-
-        $data = $this->track->receiveData();
-        if ($data === null) {
-            return null;
-        }
-        if ($data instanceof EncodedPacket) {
-            $audioLevel = $data->getAudioLevel();
-        }
-        if ($data instanceof FrameInterface) {
-            if ($data instanceof AudioFrame) {
-                $audioLevel = RtpUtility::computeAudioLevelDbov($data->getPlanes()[0]->getData(), $data->getSamples());
-            }
-            $useKeyFrame = $this->useKeyframe;
-            $this->useKeyframe = false;
-            if ($this->encoder === null) {
-                $this->encoder = Codec::getEncoder($this->codec);
-            }
-            [$payloads, $timestamp] = $this->encoder->encode($data, $useKeyFrame);
-        } else {
-            if ($this->encoder === null) {
-                $this->encoder = Codec::getEncoder($this->codec);
-            }
-            [$payloads, $timestamp] = $this->encoder->pack($data);
-        }
-
-        if (empty($payloads)) {
-            return null;
-        }
-
-        return new RTCEncodedFrame($payloads, $timestamp, $audioLevel);
     }
 
     /**

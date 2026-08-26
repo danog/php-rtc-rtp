@@ -5,6 +5,8 @@ namespace Tests\Webrtc\RTP\Sender;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
+use Tests\Webrtc\RTP\MediaStreamTrack\AudioStreamTrack;
+use Tests\Webrtc\RTP\MediaStreamTrack\VideoStreamTrack;
 use Tests\Webrtc\RTP\RTCDtlsTransportMock;
 use Webrtc\AVCodec\AVCodec;
 use Webrtc\Exception\InvalidArgumentException;
@@ -15,9 +17,7 @@ use Webrtc\RTCP\RtcpRrPacket;
 use Webrtc\RTCP\RtcpRtpfbPacket;
 use Webrtc\RTP\Enum\MediaKind;
 use Webrtc\RTP\HeaderExtension\HeaderExtensionsMap;
-use Webrtc\RTP\MediaStreamTrack\AudioStreamTrack;
 use Webrtc\RTP\MediaStreamTrack\MediaStreamTrack;
-use Webrtc\RTP\MediaStreamTrack\VideoStreamTrack;
 use Webrtc\RTP\RtpUtility;
 use Webrtc\RTP\Sender\RTCRtpSender;
 use Webrtc\RTPParameter\RTCRtpCodecParameters;
@@ -29,8 +29,6 @@ use Webrtc\Stats\RTCTransportStats;
 
 #[UsesClass(HeaderExtensionsMap::class)]
 #[UsesClass(MediaStreamTrack::class)]
-#[UsesClass(VideoStreamTrack::class)]
-#[UsesClass(AudioStreamTrack::class)]
 #[UsesClass(RtpUtility::class)]
 #[CoversClass(RTCRtpSender::class)]
 class RTCRtpSenderTest extends TestCase
@@ -166,8 +164,6 @@ class RTCRtpSenderTest extends TestCase
         $sender->start($rtpRtxParameters);
         $sender->setSsrc(1234);
         $sender->setRtxSsrc(2345);
-//        $sender->send((new VideoStreamTrack)->generateBlankFrame());
-//
 //        $rtpPacket = RtpPacket::decode($rtpPackets[0][0]);
 //        $sender->retransmit($rtpPacket->getSequenceNumber());
 //        $rtpRtxPacket = RtpPacket::decode($rtpPackets[1][0]);
