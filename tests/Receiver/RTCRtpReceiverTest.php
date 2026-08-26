@@ -5,6 +5,7 @@ namespace Tests\Webrtc\RTP\Receiver;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
+use Revolt\EventLoop;
 use Symfony\Bridge\PhpUnit\ClockMock;
 use Tests\Webrtc\RTP\RTCDtlsTransportMock;
 use Webrtc\AVCodec\AVCodec;
@@ -159,6 +160,15 @@ class RTCRtpReceiverTest extends TestCase
         $this->assertFalse($receiver->getTrack()->isEnded());
         $receiver->setRtcpSsrc(1234);
 
+        // Decoded frames are delivered as a stream, so drain them off the track's consumer
+        // in the background as the decoder produces them.
+        $frames = [];
+        EventLoop::queue(function () use ($remoteTrack, &$frames) {
+            foreach ($remoteTrack->getConsumer() as $frame) {
+                $frames[] = $frame;
+            }
+        });
+
         $rtpParametersAudio = $this->getRTCRtpReceiveParametersAudio();
 
         $receiver->start($rtpParametersAudio);
@@ -196,13 +206,13 @@ class RTCRtpReceiverTest extends TestCase
         $this->assertEquals(4028317929, $sources[0]->source);
 
         // Check remote track
-        $frame = $remoteTrack->getFrameQueue()[0]; // First frame
+        $frame = $frames[0]; // First frame
         $this->assertEquals(0, $frame->getPts());
         $this->assertEquals(8000, $frame->getSampleRate());
         $this->assertEquals(1, $frame->getTimebase()->num);
         $this->assertEquals(8000, $frame->getTimebase()->den);
 
-        $frame = $remoteTrack->getFrameQueue()[1]; // Second frame
+        $frame = $frames[1]; // Second frame
         $this->assertEquals(160, $frame->getPts());
         $this->assertEquals(8000, $frame->getSampleRate());
         $this->assertEquals(1, $frame->getTimebase()->num);

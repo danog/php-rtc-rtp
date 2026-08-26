@@ -61,7 +61,7 @@ final class DecoderQueue
         }
         $this->running = true;
         EventLoop::queue(function () use ($track) {
-            foreach ($this->queue as $frame) {
+            foreach ($this->queue->iterate() as $frame) {
                 $decodedFrame = $this->decoder->decode($frame);
                 foreach ($decodedFrame as $decoded) {
                     $track->queueFrame($decoded);
