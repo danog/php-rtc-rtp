@@ -340,6 +340,14 @@ final class RTCRtpSender implements RtpSenderInterface
         $this->orgTimestamp = random_int(0, 0xFFFFFFFF);
         EventLoop::queue(function () {
             foreach ($this->track->getConsumer() as $data) {
+                // While the sender is paused (e.g. the transceiver direction dropped the
+                // outgoing media, or the track was muted), drain frames off the consumer
+                // without putting anything on the wire. This keeps the encoder from
+                // building up a backlog that would burst out the moment we resume.
+                if (!$this->enabled) {
+                    continue;
+                }
+
                 $audioLevel = null;
                 if ($data instanceof EncodedPacket) {
                     $audioLevel = $data->getAudioLevel();
@@ -701,13 +709,25 @@ final class RTCRtpSender implements RtpSenderInterface
     }
 
     /**
-     * Sets whether the sender is enabled.
+     * Enables or disables (pauses) the sender.
      *
-     * @param bool $enabled True to enable the sender
+     * While disabled the RTP task keeps consuming frames from the track but sends nothing,
+     * effectively pausing the outgoing media. On resume a keyframe is forced so a video
+     * receiver can start decoding again without waiting for the next natural keyframe.
+     *
+     * @param bool $enabled True to resume sending, false to pause
      */
     public function setEnabled(bool $enabled): void
     {
+        if ($enabled === $this->enabled) {
+            return;
+        }
+
         $this->enabled = $enabled;
+
+        if ($enabled && $this->kind === MediaKind::Video) {
+            $this->sendKeyframe();
+        }
     }
 
     /**
