@@ -491,7 +491,12 @@ class RTCRtpReceiverTest extends TestCase
     {
         return new RTCRtpReceiveParameters(codecs: [
             $this->getVp8Codec(),
-            new RTCRtpCodecParameters("video/rtx", 90000, 101, parameters: ["apt" => 100]),
+            new RTCRtpCodecParameters(
+                mimeType: "video/rtx",
+                clockRate: 90000,
+                payloadType: 101,
+                parameters: ["apt" => 100],
+            ),
         ], encodings: [
             new RTCRtpDecodingParameters(1234, 100, new RTCRtpRtxParameters(2345)),
         ]);
@@ -501,7 +506,12 @@ class RTCRtpReceiverTest extends TestCase
     {
         return new RTCRtpReceiveParameters(codecs: [
             $this->getVp8Codec(),
-            new RTCRtpCodecParameters("video/rtx", 90000, 101, parameters: ["apt" => 100]),
+            new RTCRtpCodecParameters(
+                mimeType: "video/rtx",
+                clockRate: 90000,
+                payloadType: 101,
+                parameters: ["apt" => 100],
+            ),
         ]);
     }
 }

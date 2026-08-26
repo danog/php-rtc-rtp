@@ -24,24 +24,17 @@ use Webrtc\RTP\MediaStreamTrack\RemoteStreamTrack;
  */
 final class DecoderQueue
 {
-    /**
-     * @var Queue|null Queue for storing incoming jitter frames.
-     */
+    /** @var Queue<JitterFrame> Queue for storing incoming jitter frames. */
     private readonly Queue $queue;
-
-    /**
-     * @var DecoderInterface|null Decoder used for decoding frames.
-     */
-    private ?DecoderInterface $decoder = null;
 
     private bool $running = false;
 
     /**
      * DecoderQueue constructor.
      *
-     * Initializes the frame queue and event loop.
+     * @param DecoderInterface $decoder Decoder used for every frame added to this queue.
      */
-    public function __construct()
+    public function __construct(private readonly DecoderInterface $decoder)
     {
         $this->queue = new Queue();
     }
@@ -66,9 +59,6 @@ final class DecoderQueue
         if ($this->running) {
             throw new \RuntimeException('DecoderQueue is already started.');
         }
-        if (!$this->decoder) {
-            throw new \RuntimeException('Decoder is not set. Please set a decoder before starting the queue.');
-        }
         $this->running = true;
         EventLoop::queue(function () use ($track) {
             foreach ($this->queue as $frame) {
@@ -79,26 +69,6 @@ final class DecoderQueue
             }
             $this->running = false;
         });
-    }
-
-    /**
-     * Gets the current decoder instance.
-     *
-     * @return DecoderInterface|null The current decoder or null if is not set.
-     */
-    public function getDecoder(): ?DecoderInterface
-    {
-        return $this->decoder;
-    }
-
-    /**
-     * Sets the decoder instance.
-     *
-     * @param DecoderInterface|null $decoder The decoder to use for decoding frames.
-     */
-    public function setDecoder(?DecoderInterface $decoder): void
-    {
-        $this->decoder = $decoder;
     }
 
     /**

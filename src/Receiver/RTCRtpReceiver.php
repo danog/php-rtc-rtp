@@ -109,8 +109,6 @@ class RTCRtpReceiver implements RtpReceiverInterface
         $this->remoteBitrateEstimator = $kind === MediaKind::Video ? new RemoteBitrateEstimator() : null;
         $this->stats = new RTCStatsReport();
         $this->timestampMapper = new TimestampMapper();
-        $this->decoderQueue = new DecoderQueue();
-
     }
 
     /**
@@ -219,10 +217,6 @@ class RTCRtpReceiver implements RtpReceiverInterface
     {
         if ($this->started) {
             return;
-        }
-
-        if ($this->track && !$this->rawMode) {
-            $this->decoderQueue->start($this->track);
         }
 
         foreach ($parameters->codecs as $codec) {
@@ -670,8 +664,14 @@ class RTCRtpReceiver implements RtpReceiverInterface
             return;
         }
 
-        if (!$this->decoderQueue->getDecoder()) {
-            $this->decoderQueue->setDecoder(Codec::getDecoder($codec));
+        $track = $this->track;
+        if ($track === null) {
+            return;
+        }
+
+        if ($this->decoderQueue === null) {
+            $this->decoderQueue = new DecoderQueue(Codec::getDecoder($codec));
+            $this->decoderQueue->start($track);
         }
         $this->decoderQueue->addFrame($encodedFrame);
     }
@@ -684,7 +684,7 @@ class RTCRtpReceiver implements RtpReceiverInterface
         if ($this->track) {
             $this->track->stop();
             $this->track = null;
-            $this->decoderQueue->stop();
+            $this->decoderQueue?->stop();
         }
 
         $this->decoderQueue = null;
