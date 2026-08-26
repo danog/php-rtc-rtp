@@ -36,7 +36,8 @@
         "danog/php-rtc-stats": "^1.0",
         "danog/php-rtc-ntp": "^1.0",
         "danog/php-rtc-sdp": "^1.0",
-        "ramsey/uuid": "^4.7"
+        "ramsey/uuid": "^4.7",
+        "amphp/pipeline": "1.x-dev"
     },
     "require-dev": {
         "phpunit/phpunit": "^11.3",

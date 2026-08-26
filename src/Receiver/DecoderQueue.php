@@ -11,8 +11,8 @@
 
 namespace Webrtc\RTP\Receiver;
 
+use Amp\Pipeline\Queue;
 use Revolt\EventLoop;
-use SplQueue;
 use Webrtc\Codecs\DecoderInterface;
 use Webrtc\RTP\Jitter\JitterFrame;
 use Webrtc\RTP\MediaStreamTrack\RemoteStreamTrack;
@@ -22,26 +22,19 @@ use Webrtc\RTP\MediaStreamTrack\RemoteStreamTrack;
  *
  * Manages a queue of frames for asynchronous decoding and playback.
  */
-class DecoderQueue
+final class DecoderQueue
 {
     /**
-     * @var SplQueue|null Queue for storing incoming jitter frames.
+     * @var Queue|null Queue for storing incoming jitter frames.
      */
-    private ?SplQueue $queue;
-
-    /**
-     * @var string Handle of the task processing the frame queue periodically.
-     */
-    private string $queueTask;
+    private readonly Queue $queue;
 
     /**
      * @var DecoderInterface|null Decoder used for decoding frames.
      */
-    /** How often the queue is drained; see RTCRtpSender::POLL_INTERVAL. */
-    private const POLL_INTERVAL = 0.001;
-
     private ?DecoderInterface $decoder = null;
 
+    private bool $running = false;
 
     /**
      * DecoderQueue constructor.
@@ -50,7 +43,7 @@ class DecoderQueue
      */
     public function __construct()
     {
-        $this->queue = new SplQueue();
+        $this->queue = new Queue();
     }
 
     /**
@@ -60,7 +53,7 @@ class DecoderQueue
      */
     public function addFrame(JitterFrame $frame): void
     {
-        $this->queue->enqueue($frame);
+        $this->queue->push($frame);
     }
 
     /**
@@ -70,19 +63,21 @@ class DecoderQueue
      */
     public function start(RemoteStreamTrack $track): void
     {
-        $this->queueTask = EventLoop::repeat(self::POLL_INTERVAL, function () use ($track) {
-            if ($this->queue->isEmpty()) {
-                return;
-            }
-
-            $decodedFrame = $this->decoder->decode($this->queue->dequeue());
-            if (is_array($decodedFrame)) {
-                foreach ($decodedFrame as $frame) {
-                    $track->queueFrame($frame);
+        if ($this->running) {
+            throw new \RuntimeException('DecoderQueue is already started.');
+        }
+        if (!$this->decoder) {
+            throw new \RuntimeException('Decoder is not set. Please set a decoder before starting the queue.');
+        }
+        $this->running = true;
+        EventLoop::queue(function () use ($track) {
+            foreach ($this->queue as $frame) {
+                $decodedFrame = $this->decoder->decode($frame);
+                foreach ($decodedFrame as $decoded) {
+                    $track->queueFrame($decoded);
                 }
-                return;
             }
-            $track->queueFrame($decodedFrame);
+            $this->running = false;
         });
     }
 
@@ -111,10 +106,6 @@ class DecoderQueue
      */
     public function stop(): void
     {
-        $this->queue = null;
-        // The task is only scheduled by start(), which is skipped in raw (no-decode) mode.
-        if (isset($this->queueTask)) {
-            EventLoop::cancel($this->queueTask);
-        }
+        $this->queue->complete();
     }
 }

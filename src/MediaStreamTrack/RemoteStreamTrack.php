@@ -11,6 +11,9 @@
 
 namespace Webrtc\RTP\MediaStreamTrack;
 
+use Amp\Cancellation;
+use Amp\Pipeline\ConcurrentIterator;
+use Amp\Pipeline\Queue;
 use SplQueue;
 use Webrtc\AVCodec\Data\Packet;
 use Webrtc\Codecs\EncodedPacket;
@@ -36,9 +39,10 @@ class RemoteStreamTrack extends MediaStreamTrack
     /**
      * A queue to hold frames for the track.
      *
-     * @var SplQueue
+     * @var Queue
      */
-    private SplQueue $frameQueue;
+    private Queue $frameQueue;
+    private ConcurrentIterator $frameQueueIterator;
 
     /**
      * Constructor for RemoteStreamTrack.
@@ -53,11 +57,18 @@ class RemoteStreamTrack extends MediaStreamTrack
     {
         parent::__construct();
         $this->kind = $kind;
-        $this->frameQueue = new SplQueue();
+        $this->frameQueue = new Queue();
+        $this->frameQueueIterator = $this->frameQueue->iterate();
 
         if ($id) {
             $this->id = $id;
         }
+    }
+
+    public function stop(): void
+    {
+        parent::stop();
+        $this->frameQueue->complete();
     }
 
     /**
@@ -69,23 +80,23 @@ class RemoteStreamTrack extends MediaStreamTrack
      */
     public function queueFrame(FrameInterface|EncodedPacket $frame): void
     {
-        $this->frameQueue->enqueue($frame);
+        $this->frameQueue->push($frame);
     }
 
     /**
      * Receives and returns the next frame from the queue.
      *
      * If there are frames in the queue, the next frame is dequeued and returned.
-     * If the queue is empty, `null` is returned.
+     * If the queue has stopped, `null` is returned.
      *
      * @return FrameInterface|Packet|null The next frame or packet, or null if the queue is empty.
      */
-    public function receiveData(): FrameInterface|Packet|EncodedPacket|null
+    public function receiveData(?Cancellation $cancellation = null): FrameInterface|Packet|EncodedPacket|null
     {
-        if (!$this->frameQueue->isEmpty()) {
-            return $this->frameQueue->dequeue();
+        if (!$this->frameQueueIterator->continue($cancellation)) {
+            return null;
         }
-        return null;
+        return $this->frameQueueIterator->getValue();
     }
 
     /**
@@ -93,9 +104,9 @@ class RemoteStreamTrack extends MediaStreamTrack
      *
      * This method returns the queue that holds the frames for this track.
      *
-     * @return SplQueue The frame queue.
+     * @return Queue The frame queue.
      */
-    public function getFrameQueue(): SplQueue
+    public function getFrameQueue(): Queue
     {
         return $this->frameQueue;
     }

@@ -11,6 +11,7 @@
 
 namespace Webrtc\RTP\MediaStreamTrack;
 
+use Amp\Cancellation;
 use Webrtc\AVCodec\AVCodec;
 use Webrtc\AVCodec\Data\Packet;
 use Webrtc\AVCodec\Exception\AvCodecException;
@@ -138,10 +139,9 @@ class AudioStreamTrack extends MediaStreamTrack
      * In this case, it generates and returns a silent audio frame, as no real
      * audio data is being processed.
      *
-     * @return null|Packet|FrameInterface A silent audio frame.
      * @throws RtpSenderException
      */
-    public function receiveData(): null|Packet|FrameInterface
+    public function receiveData(?Cancellation $cancellation = null): AudioFrame
     {
         return $this->generateSilentFrame();
     }

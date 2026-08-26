@@ -91,15 +91,6 @@ class RTCRtpSender implements RtpSenderInterface
     private bool $enabled = true;
 
     /**
-     * How often the track is polled for the next frame.
-     *
-     * A zero interval would spin the event loop as fast as it can go, burning a whole core: the
-     * shortest packetization time in use is 10ms, so polling an order of magnitude faster than
-     * that keeps jitter negligible while leaving the CPU idle.
-     */
-    private const POLL_INTERVAL = 0.001;
-
-    /**
      * Loudness, in -dBov, at or below which a packet still counts as carrying speech.
      *
      * Used to fill in the voice activity bit of the RFC 6464 audio level extension. Levels are

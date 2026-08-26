@@ -11,6 +11,7 @@
 
 namespace Webrtc\RTP\MediaStreamTrack;
 
+use Amp\Cancellation;
 use Evenement\EventEmitter;
 use Ramsey\Uuid\Uuid;
 use Webrtc\AVCodec\Data\Packet;
@@ -120,7 +121,7 @@ abstract class MediaStreamTrack extends EventEmitter
      * This is an abstract method that subclasses must implement.
      * It handles the retrieval or generation of the next frame or packet.
      *
-     * @return FrameInterface|Packet|EncodedPacket|null The next frame or packet, or null if none available.
+     * @return FrameInterface|Packet|EncodedPacket|null The next frame or packet, or null if the queue is empty.
      */
-    abstract public function receiveData(): FrameInterface|Packet|EncodedPacket|null;
+    abstract public function receiveData(?Cancellation $cancellation = null): FrameInterface|Packet|EncodedPacket|null;
 }

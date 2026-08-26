@@ -11,6 +11,7 @@
 
 namespace Webrtc\RTP\MediaStreamTrack;
 
+use Amp\Cancellation;
 use Exception;
 use Webrtc\AVCodec\Data\Packet;
 use Webrtc\AVCodec\Exception\AvCodecException;
@@ -130,11 +131,11 @@ class VideoStreamTrack extends MediaStreamTrack
      * This method generates a blank video frame and returns it. It may throw exceptions
      * related to codec issues or if the track has stopped.
      *
-     * @return Packet|FrameInterface|null The next video frame or packet, or null if none available.
+     * @return Packet|FrameInterface The next video frame or packet
      * @throws AvCodecException If there is an error generating the video frame.
      * @throws MediaStreamTrackException If the track has stopped.
      */
-    public function receiveData(): null|Packet|FrameInterface
+    public function receiveData(?Cancellation $cancellation = null): VideoFrame
     {
         return $this->generateBlankFrame();
     }
