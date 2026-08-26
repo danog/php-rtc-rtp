@@ -94,6 +94,11 @@ abstract class MediaStreamTrack extends EventEmitter
         $this->removeAllListeners();
     }
 
+    public function isEnded(): bool
+    {
+        return $this->stopped;
+    }
+
     /**
      * Gets the kind of media track (audio, video, etc.).
      *
