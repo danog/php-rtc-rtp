@@ -14,7 +14,7 @@ namespace Webrtc\RTP\MediaStreamTrack;
 use Webrtc\RTP\Receiver\RTCRtpReceiver;
 use Webrtc\RTP\RTCRtpTransceiver;
 
-class RTCTrackEvent
+final class RTCTrackEvent
 {
     /**
      * This event is fired on RTCPeerConnection when a new MediaStreamTrack is added by the remote party.

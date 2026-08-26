@@ -23,7 +23,7 @@ use Webrtc\RTP\RtpPacket;
  * smoother playout. Misordered packets beyond a defined threshold trigger a
  * buffer reset and (for video) may prompt a Picture Loss Indication (PLI).
  */
-class JitterBuffer
+final class JitterBuffer
 {
     /**
      * Maximum sequence number misordering tolerated before the buffer resets.

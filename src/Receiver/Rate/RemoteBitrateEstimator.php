@@ -17,7 +17,7 @@ use Webrtc\RTP\Enum\BandwidthUsage;
  * A class for estimating the remote bitrate, controlling the rate based on incoming data,
  * inter-arrival times, and overuse detection.
  */
-class RemoteBitrateEstimator
+final class RemoteBitrateEstimator
 {
 
     /** abs-send-time estimator */

@@ -27,7 +27,7 @@ namespace Webrtc\RTP\Receiver\Rate;
  * This is a core part of WebRTC bandwidth estimation used in delay-based bitrate control.
  */
 
-class InterArrival
+final class InterArrival
 {
     private const BURST_DELTA_THRESHOLD_MS = 5;
     private int $groupLength;

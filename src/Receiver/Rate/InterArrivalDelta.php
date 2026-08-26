@@ -23,7 +23,7 @@ namespace Webrtc\RTP\Receiver\Rate;
  * - $arrivalTime: The difference in arrival times (milliseconds) between two groups.
  * - $size: The difference in total packet sizes (bytes) between two groups.
  */
-class InterArrivalDelta {
+final class InterArrivalDelta {
     public int $timestamp;
     public int $arrivalTime;
     public int $size;

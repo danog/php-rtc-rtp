@@ -30,7 +30,7 @@ use Webrtc\RTP\Sender\RtpSenderInterface;
  * to correctly route incoming packets to their associated RtpSender or RtpReceiver
  * instances. It supports both RTP and RTCP packet routing.
  */
-class RtpRouter
+final class RtpRouter
 {
     /** @var array List of registered receivers. */
     private array $receivers = [];

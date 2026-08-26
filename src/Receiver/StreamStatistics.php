@@ -21,7 +21,7 @@ use Webrtc\RTP\RtpPacket;
  * of received packets, estimating jitter based on RFC 3550, and handling 16-bit
  * sequence number wrap-around. It's useful for generating RTCP reports or debugging.
  */
-class StreamStatistics
+final class StreamStatistics
 {
     private ?int $baseSeq = null;
     private ?int $maxSeq = null;

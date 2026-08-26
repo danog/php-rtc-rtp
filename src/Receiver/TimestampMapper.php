@@ -18,7 +18,7 @@ namespace Webrtc\RTP\Receiver;
  * monotonic timestamp sequence starting from the first observed timestamp.
  * Useful for synchronizing media streams or aligning packet timing data.
  */
-class TimestampMapper
+final class TimestampMapper
 {
     private ?int $last = null;
     private ?int $origin = null;

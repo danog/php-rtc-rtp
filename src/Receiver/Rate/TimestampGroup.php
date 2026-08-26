@@ -14,7 +14,7 @@ namespace Webrtc\RTP\Receiver\Rate;
 use Webrtc\Mixin\DataClass;
 
 #[DataClass]
-class TimestampGroup {
+final class TimestampGroup {
     public ?int $arrivalTime;
     public ?int $firstTimestamp;
     public ?int $lastTimestamp;

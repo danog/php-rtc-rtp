@@ -14,7 +14,7 @@ namespace Webrtc\RTP\HeaderExtension;
 use Webrtc\Mixin\DataClass;
 
 #[DataClass]
-class HeaderExtensions
+final class HeaderExtensions
 {
     private mixed $mid = null;
     private mixed $repairedRtpStreamId = null;
@@ -95,4 +95,3 @@ class HeaderExtensions
     }
 
 }
-

@@ -14,7 +14,7 @@ namespace Webrtc\RTP\Receiver\Rate;
 /**
  * Rate counter, which stores the amount received in 1 ms buckets.
  */
-class RateCounter
+final class RateCounter
 {
     private int $originIndex = 0;
     private ?int $originMs = null;

@@ -28,7 +28,7 @@ use Webrtc\Srtp\Exception\SrtpException;
  * represents one bidirectional stream, with an RTP sender and receiver that share
  * the same media identification (mid) value.
  */
-class RTCRtpTransceiver
+final class RTCRtpTransceiver
 {
     /** @var SDPDirections|null The currently negotiated direction of the transceiver. */
     private ?SDPDirections $currentDirection = null;

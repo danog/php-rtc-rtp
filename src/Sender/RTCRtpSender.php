@@ -64,7 +64,7 @@ use Webrtc\Stats\RTCStatsReport;
  * - Collecting and reporting statistics
  * - Managing the media track and transport
  */
-class RTCRtpSender implements RtpSenderInterface
+final class RTCRtpSender implements RtpSenderInterface
 {
     /** @var float Smoothing factor for RTT calculations */
     private const RTT_ALPHA = 0.85;

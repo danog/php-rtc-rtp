@@ -11,7 +11,7 @@
 
 namespace Webrtc\RTP\Exception;
 
-class MediaStreamTrackException extends \Exception implements RtpExceptionInterface
+final class MediaStreamTrackException extends \Exception implements RtpExceptionInterface
 {
 
 }

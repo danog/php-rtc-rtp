@@ -15,7 +15,7 @@ use Webrtc\Codecs\JitterFrameInterface;
 use Webrtc\Mixin\DataClass;
 
 #[DataClass]
-class JitterFrame implements JitterFrameInterface
+final class JitterFrame implements JitterFrameInterface
 {
     /**
      * @param string $data Raw data to decode

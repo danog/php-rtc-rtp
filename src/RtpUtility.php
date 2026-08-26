@@ -23,7 +23,7 @@ use Webrtc\Exception\InvalidArgumentException;
  * - RTX packet wrapping/unwrapping
  * - REMB feedback message handling
  */
-class RtpUtility
+final class RtpUtility
 {
     private const MAX_SAMPLE_VALUE = 32767;
     private const MAX_AUDIO_LEVEL = 0;

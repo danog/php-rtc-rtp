@@ -31,7 +31,7 @@ use Webrtc\RTP\Enum\RateControlState;
  * - Multiplicative increase and additive increase options based on proximity to maximum throughput.
  * - Exponential averaging of estimated maximum throughput and its variance.
  */
-class AimdRateControl
+final class AimdRateControl
 {
     private ?float $avgMaxBitrateKbps = null;
     private float $varMaxBitrateKbps = 0.4;
@@ -318,4 +318,3 @@ class AimdRateControl
         return $this->nearMax;
     }
 }
-

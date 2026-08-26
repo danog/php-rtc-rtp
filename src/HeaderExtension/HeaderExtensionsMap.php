@@ -21,7 +21,7 @@ use Webrtc\RTPParameter\RTCRtpParameters;
  * negotiation or other signaling information, and then allows parsing and packing
  * of the actual header extension values during RTP processing.
  */
-class HeaderExtensionsMap
+final class HeaderExtensionsMap
 {
     private HeaderExtensions $ids;
 

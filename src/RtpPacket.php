@@ -23,7 +23,7 @@ use Webrtc\RTP\HeaderExtension\HeaderExtensionsMap;
  * including handling of header extensions, CSRC items, and padding. It supports both
  * one-byte and two-byte header extensions as defined in RFC 5285.
  */
-class RtpPacket
+final class RtpPacket
 {
     private const RTP_HEADER_LENGTH = 12;
     private int $version = 2;

@@ -58,7 +58,7 @@ use Webrtc\Stats\RTCStatsReport;
  * This class plays a critical role in the WebRTC stack, managing the flow of audio or video media
  * from the DTLS transport layer to the remote MediaStreamTrack.
  */
-class RTCRtpReceiver implements RtpReceiverInterface
+final class RTCRtpReceiver implements RtpReceiverInterface
 
 {
     private bool $enabled = true;

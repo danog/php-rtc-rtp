@@ -23,7 +23,7 @@ use Webrtc\RTP\RtpPacket;
  * It handles 16-bit sequence number wrap-around and automatically prunes old entries
  * to limit memory usage based on a fixed RTP history window.
  */
-class NackGenerator
+final class NackGenerator
 {
     private ?int $maxSeq = null;
     private array $missing = [];

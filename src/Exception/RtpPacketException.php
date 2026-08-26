@@ -11,7 +11,7 @@
 
 namespace Webrtc\RTP\Exception;
 
-class RtpPacketException extends \Exception implements RtpExceptionInterface
+final class RtpPacketException extends \Exception implements RtpExceptionInterface
 {
 
 }

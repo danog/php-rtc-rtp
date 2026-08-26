@@ -14,7 +14,7 @@ namespace Webrtc\RTP\Receiver\Rate;
 /**
  * Rate bucket for storing count and value
  */
-class RateBucket {
+final class RateBucket {
     public int $count;
     public int $value;
 

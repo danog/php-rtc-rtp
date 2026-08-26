@@ -23,7 +23,7 @@ use Webrtc\RTP\Enum\BandwidthUsage;
  *
  * Adapted from the WebRTC project's implementation.
  */
-class OveruseEstimator {
+final class OveruseEstimator {
 
     /** Minimum number of deltas to keep */
     const MIN_NUM_DELTAS = 1000;
