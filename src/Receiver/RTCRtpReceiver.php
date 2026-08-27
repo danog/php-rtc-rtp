@@ -259,7 +259,7 @@ final class RTCRtpReceiver implements RtpReceiverInterface
 
         // Cancel RTCP periodic task
         EventLoop::cancel($this->rtcpTask);
-        $this->log(" RTCP has ended.");
+        $this->logger->debug(" RTCP has ended.");
         $this->finishUpRtp();
     }
 
@@ -271,7 +271,7 @@ final class RTCRtpReceiver implements RtpReceiverInterface
      */
     public function handleRtcpPacket(RtcpPacketInterface $packet): void
     {
-        $this->log("Received RTCP packet: " . $packet);
+        $this->logger->debug("Received RTCP packet: " . $packet);
 
         if ($packet instanceof RtcpSrPacket) {
             $this->handleRtcpSrPacket($packet);
@@ -329,7 +329,7 @@ final class RTCRtpReceiver implements RtpReceiverInterface
      */
     public function handleRtpPacket(RtpPacket $packet, int $arrivalTimeMs): void
     {
-        $this->log("Received RTP packet: " . $packet);
+        $this->logger->debug("Received RTP packet: " . $packet);
 
         if (!$this->enabled) {
             return;
@@ -400,7 +400,7 @@ final class RTCRtpReceiver implements RtpReceiverInterface
     private function validateCodec(RtpPacket $packet): ?RTCRtpCodecParameters
     {
         if (!isset($this->codecs[$packet->getPayloadType()])) {
-            $this->log("x RTP packet with unknown payload type %d", $packet->getPayloadType());
+            $this->logger->debug(sprintf("x RTP packet with unknown payload type %d", $packet->getPayloadType()));
             return null;
         }
         return $this->codecs[$packet->getPayloadType()];
@@ -433,7 +433,7 @@ final class RTCRtpReceiver implements RtpReceiverInterface
         if (CodecUtility::isRtx($codec)) {
             $originalSsrc = $this->rtxSsrc[$packet->getSsrc()] ?? null;
             if (!$originalSsrc) {
-                $this->log("x RTX packet from unknown SSRC %d", $packet->getSsrc());
+                $this->logger->debug(sprintf("x RTX packet from unknown SSRC %d", $packet->getSsrc()));
                 return null;
             }
 
@@ -476,7 +476,7 @@ final class RTCRtpReceiver implements RtpReceiverInterface
             $packet->setDecodedData($decoded);
             return true;
         } catch (Exception $e) {
-            $this->log(sprintf(" x RTP payload parsing failed: %s", $e->getMessage()));
+            $this->logger->debug(sprintf(" x RTP payload parsing failed: %s", $e->getMessage()));
             return false;
         }
     }
@@ -505,7 +505,7 @@ final class RTCRtpReceiver implements RtpReceiverInterface
      */
     private function runRtcp(): void
     {
-        $this->log(" RTCP started");
+        $this->logger->debug(" RTCP started");
 
         $this->rtcpTask = EventLoop::repeat(0.5 + (random_int(0, 1000) / 1000), function () {
             try {
@@ -514,7 +514,7 @@ final class RTCRtpReceiver implements RtpReceiverInterface
                     $this->sendRtcp($rtcpPackets);
                 }
             } catch (RtcpExceptionInterface $e) {
-                $this->log("RTCP error: " . $e->getMessage(), "warning");
+                $this->logger->warning(sprintf("RTCP error: %s", $e->getMessage()));
             }
         });
     }
@@ -564,22 +564,11 @@ final class RTCRtpReceiver implements RtpReceiverInterface
      */
     private function sendRtcp(RtcpPacketInterface $packet): void
     {
-        $this->log(" Sent Rtcp packet: " . $packet);
+        $this->logger->debug(sprintf(" Sent Rtcp packet: %s", $packet));
         try {
             $this->transport->sendRtcp($packet->encode());
         } catch (Exception) {
         }
-    }
-
-    /**
-     * Log a message with a specified log level.
-     *
-     * @param string $message The message to log.
-     * @param string $level The log level (default is "debug").
-     */
-    private function log(string $message, string $level = "debug"): void
-    {
-        $this->logger?->{$level}("RTCRtpSender($this->kind): $message");
     }
 
     /**
@@ -589,6 +578,13 @@ final class RTCRtpReceiver implements RtpReceiverInterface
      */
     public function setLogger(LoggerInterface $logger): void
     {
+        $logger = new class((string) $this->kind, $logger) extends \Psr\Log\AbstractLogger {
+            public function __construct(private readonly string $kind, private readonly LoggerInterface $logger) {}
+            public function log($level, $message, array $context = array()): void {
+                assert(is_string($message));
+                $this->logger->log($level, "RTCRtpSender($this->kind): $message", $context);
+            }
+        };
         $this->logger = $logger;
     }
 
@@ -689,7 +685,7 @@ final class RTCRtpReceiver implements RtpReceiverInterface
 
         $this->decoderQueue = null;
 
-        $this->log(" RTP has ended.");
+        $this->logger->debug(" RTP has ended.");
     }
 
     /**
