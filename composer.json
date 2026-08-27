@@ -30,7 +30,7 @@
         "php": "^8.2",
         "amphp/amp": "^3.1",
         "danog/php-rtc-exception": "^1.0",
-        "danog/php-rtc-codecs": "^1.0",
+        "danog/php-rtc-codecs": "^1.1.2",
         "danog/php-rtc-rtp-parameter": "^1.0",
         "danog/php-rtc-rtcp": "^1.0",
         "danog/php-rtc-stats": "^1.0",
