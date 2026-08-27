@@ -18,6 +18,9 @@ use Webrtc\RTPParameter\RTCRtpParameters;
 #[UsesClass(HeaderExtensionsMap::class)]
 #[UsesClass(RtpUtility::class)]
 #[UsesClass(RTCRtpSender::class)]
+#[UsesClass(\Webrtc\RTPParameter\RTCRtcpParameters::class)]
+#[UsesClass(\Webrtc\RTPParameter\RTCRtpHeaderExtensionParameters::class)]
+#[UsesClass(\Webrtc\RTPParameter\RTCRtpParameters::class)]
 #[CoversClass(RtpPacket::class)]
 class RtpPacketTest extends TestCase
 {

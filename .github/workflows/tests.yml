@@ -16,12 +16,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up PHP 8.4 with FFI and GMP
+      - name: Set up PHP 8.4 with FFI
         uses: shivammathur/setup-php@v2
         with:
           php-version: 8.4
           tools: composer:v2
-          extensions: ffi, gmp
+          extensions: ffi
 
       - name: Validate composer.json and composer.lock
         run: composer validate --strict
@@ -73,7 +73,6 @@ jobs:
       - name: Check PHP version and extensions
         run: |
           php -v
-          php -m | grep -i gmp
 
       - name: Run PHPUnit tests
         run: vendor/bin/phpunit

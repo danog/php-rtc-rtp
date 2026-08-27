@@ -3,6 +3,7 @@
 namespace Tests\Webrtc\RTP;
 
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
 use Webrtc\Exception\InvalidArgumentException;
 use Webrtc\RTP\Enum\MediaKind;
@@ -12,6 +13,15 @@ use Webrtc\RTP\Sender\RTCRtpSender;
 use Webrtc\RTPParameter\RTCRtpCodecCapability;
 
 #[CoversClass(RTCRtpTransceiver::class)]
+#[UsesClass(\Webrtc\Codecs\Codec::class)]
+#[UsesClass(\Webrtc\Codecs\CodecUtility::class)]
+#[UsesClass(\Webrtc\RTPParameter\RTCRtcpFeedback::class)]
+#[UsesClass(\Webrtc\RTPParameter\RTCRtpCapabilities::class)]
+#[UsesClass(\Webrtc\RTPParameter\RTCRtpCodecCapability::class)]
+#[UsesClass(\Webrtc\RTPParameter\RTCRtpCodecParameters::class)]
+#[UsesClass(\Webrtc\RTPParameter\RTCRtpHeaderExtensionCapability::class)]
+#[UsesClass(\Webrtc\RTPParameter\RTCRtpHeaderExtensionParameters::class)]
+#[UsesClass(\Webrtc\RTP\Sender\RTCRtpSender::class)]
 class RTCRtpTransceiverTest extends TestCase {
     public function testCodecPreferences(): void {
         $rtpSenderMock = $this->getMockBuilder(RTCRtpSender::class)->disableOriginalConstructor()->getMock();

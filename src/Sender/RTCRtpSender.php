@@ -343,7 +343,20 @@ final class RTCRtpSender implements RtpSenderInterface
         }
 
         EventLoop::queue(function () {
-            foreach ($this->track->getConsumer() as $data) {
+            // Capture the track once. The sender may be stopped (or its track detached)
+            // between queueing and execution, in which case there is nothing to send yet.
+            $track = $this->track;
+            if ($track === null || !$this->started) {
+                return;
+            }
+            foreach ($track->getConsumer() as $data) {
+                // The sender may be stopped (or its track detached) while iterating: bail out
+                // immediately instead of pushing more media onto the wire. The captured track
+                // reference stays valid, but stop() completes its consumer so the loop would
+                // also end cleanly on its own.
+                if ($this->track === null || !$this->started) {
+                    break;
+                }
                 // While the sender is paused (e.g. the transceiver direction dropped the
                 // outgoing media, or the track was muted), drain frames off the consumer
                 // without putting anything on the wire. This keeps the encoder from
@@ -365,6 +378,9 @@ final class RTCRtpSender implements RtpSenderInterface
                     $this->encoder ??= Codec::getEncoder($this->codec);
                     [$payloads, $timestamp] = $this->encoder->encode($data, $useKeyFrame);
                 } else {
+                    // pack() handles both EncodedPacket and AVCodec Packet: pre-encoded frames are
+                    // passed straight through (still packetized for video), while raw packets have
+                    // their timebase converted to the codec's RTP clock.
                     $this->encoder ??= Codec::getEncoder($this->codec);
                     [$payloads, $timestamp] = $this->encoder->pack($data);
                 }
