@@ -40,7 +40,7 @@
         "amphp/pipeline": "1.x-dev"
     },
     "require-dev": {
-        "phpunit/phpunit": "^11.3",
+        "phpunit/phpunit": "^13.0",
         "symfony/phpunit-bridge": "7.3.x-dev",
         "dg/bypass-finals": "dev-master"
     },
@@ -54,5 +54,5 @@
             "Tests\\Webrtc\\RTP\\": "tests"
         }
     },
-    "minimum-stability": "dev"
+    "minimum-stability": "stable"
 }
