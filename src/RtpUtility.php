@@ -113,26 +113,6 @@ final class RtpUtility
         return $data;
     }
 
-    /**
-     * Combines two 32-bit integers into a 64-bit integer.
-     *
-     * This helper method ensures correct handling of 64-bit integers on all platforms.
-     *
-     * @param int $high The high 32 bits.
-     * @param int $low The low 32 bits.
-     * @return int The combined 64-bit integer.
-     */
-    public static function combine64Bit(int $high, int $low): int
-    {
-        // On 64-bit systems, this works directly
-        if (PHP_INT_SIZE >= 8) {
-            return ($high << 32) | $low;
-        }
-
-        // On 32-bit systems, use bcmath for 64-bit arithmetic
-        return (int)bcadd(bcmul($high, '4294967296'), $low);
-    }
-
     public static function unpackRembFci(string $data): array
     {
         if (strlen($data) < 8 || !str_starts_with($data, "REMB")) {

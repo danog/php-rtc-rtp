@@ -338,6 +338,10 @@ final class RTCRtpSender implements RtpSenderInterface
         $this->logger?->debug("Start RTP task");
         $this->sequenceNumber = $this->generateSequenceNumber();
         $this->orgTimestamp = random_int(0, 0xFFFFFFFF);
+        if ($this->track === null) {
+            throw new InvalidArgumentException("Cannot start the RTP task without a media track");
+        }
+
         EventLoop::queue(function () {
             foreach ($this->track->getConsumer() as $data) {
                 // While the sender is paused (e.g. the transceiver direction dropped the
