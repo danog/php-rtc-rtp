@@ -280,7 +280,7 @@ final class RTCRtpSender implements RtpSenderInterface
         $this->startRtpTask();
         $this->startRtcpTask();
         $this->started = true;
-        $this->log(" RTP Sender started");
+        $this->logger->debug(" RTP Sender started");
     }
 
     /**
@@ -312,7 +312,7 @@ final class RTCRtpSender implements RtpSenderInterface
         $byePacket = new RtcpByePacket([$this->ssrc]);
         $this->sendRtcpPacket([$byePacket]);
 
-        $this->log(" RTCP has ended.");
+        $this->logger->debug(" RTCP has ended.");
     }
 
     /**
@@ -325,7 +325,7 @@ final class RTCRtpSender implements RtpSenderInterface
             $this->track = null;
         }
         $this->encoder = null;
-        $this->log(" RTP has ended.");
+        $this->logger->debug(" RTP has ended.");
     }
 
     /**
@@ -335,7 +335,7 @@ final class RTCRtpSender implements RtpSenderInterface
      */
     public function startRtpTask(): void
     {
-        $this->log("Start RTP task");
+        $this->logger->debug("Start RTP task");
         $this->sequenceNumber = $this->generateSequenceNumber();
         $this->orgTimestamp = random_int(0, 0xFFFFFFFF);
         EventLoop::queue(function () {
@@ -425,7 +425,7 @@ final class RTCRtpSender implements RtpSenderInterface
      */
     private function sendRtpPacket(RtpPacket $packet): void
     {
-        $this->log("Sending packet: $packet");
+        $this->logger->debug("Sending packet: $packet");
         $this->rtpHistory[$packet->getSequenceNumber() % RtpConstants::RTP_HISTORY_SIZE] = $packet;
         $packetBytes = $packet->encode($this->headerExtensionsMap);
         $this->transport->sendRtp($packetBytes);
@@ -453,14 +453,14 @@ final class RTCRtpSender implements RtpSenderInterface
      */
     private function startRtcpTask(): void
     {
-        $this->log("RTCP started");
+        $this->logger->debug("RTCP started");
 
         $this->rtcpTask = EventLoop::repeat(0.5 + (random_int(0, 1000) / 1000), function () {
             try {
                 $rtcpPackets = $this->generateRtcpPackets();
                 $this->sendRtcpPacket($rtcpPackets);
             } catch (RtcpExceptionInterface $e) {
-                $this->log("RTCP error: " . $e->getMessage(), "warning");
+                $this->logger->warning("RTCP error: " . $e->getMessage());
             }
         });
     }
@@ -529,14 +529,14 @@ final class RTCRtpSender implements RtpSenderInterface
     {
         $payload = "";
         foreach ($packets as $packet) {
-            $this->log("Sending RTCP packet: $packet");
+            $this->logger->debug("Sending RTCP packet: $packet");
             $payload .= $packet->encode();
         }
 
         try {
             $this->transport->sendRtcp($payload);
         } catch (Throwable $e) {
-            $this->log("Failed to send RTCP: " . $e->getMessage(), "warning");
+            $this->logger->warning("Failed to send RTCP: " . $e->getMessage());
         }
     }
 
@@ -613,7 +613,7 @@ final class RTCRtpSender implements RtpSenderInterface
                 $this->rtxSequenceNumber = ($this->rtxSequenceNumber + 1) & 0xFFFF;
             }
 
-            $this->log("Retransmitting packet: $packet");
+            $this->logger->debug("Retransmitting packet: $packet");
             $packetBytes = $packet->encode($this->headerExtensionsMap);
             $this->transport->sendRtp($packetBytes);
         }
@@ -629,7 +629,7 @@ final class RTCRtpSender implements RtpSenderInterface
         try {
             [$bitrate, $ssrcs] = RtpUtility::unpackRembFci($packet->getFci());
             if (in_array($this->ssrc, $ssrcs)) {
-                $this->log("Receiver estimated maximum bitrate: $bitrate bps");
+                $this->logger->debug("Receiver estimated maximum bitrate: $bitrate bps");
                 $this->encoder?->setBitrate($bitrate);
             }
         } catch (Exception) {
@@ -637,16 +637,6 @@ final class RTCRtpSender implements RtpSenderInterface
         }
     }
 
-    /**
-     * Logs a message using the configured logger.
-     *
-     * @param string $message The message to log
-     * @param string $level The log level (default: "debug")
-     */
-    private function log(string $message, string $level = "debug"): void
-    {
-        $this->logger?->{$level}("RTCRtpSender({$this->kind->value}): $message");
-    }
 
     /**
      * Checks if the next frame should be a keyframe.
@@ -695,6 +685,13 @@ final class RTCRtpSender implements RtpSenderInterface
      */
     public function setLogger(?LoggerInterface $logger): void
     {
+        $logger = new class((string) $this->kind, $logger) extends \Psr\Log\AbstractLogger {
+            public function __construct(private readonly string $kind, private readonly LoggerInterface $logger) {}
+            public function log($level, $message, array $context = array()): void {
+                assert(is_string($message));
+                $this->logger->log($level, "RTCRtpSender($this->kind): $message", $context);
+            }
+        };
         $this->logger = $logger;
     }
 

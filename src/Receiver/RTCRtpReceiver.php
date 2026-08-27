@@ -582,7 +582,7 @@ final class RTCRtpReceiver implements RtpReceiverInterface
             public function __construct(private readonly string $kind, private readonly LoggerInterface $logger) {}
             public function log($level, $message, array $context = array()): void {
                 assert(is_string($message));
-                $this->logger->log($level, "RTCRtpSender($this->kind): $message", $context);
+                $this->logger->log($level, "RTCRtpReceiver($this->kind): $message", $context);
             }
         };
         $this->logger = $logger;
