@@ -35,8 +35,8 @@ class RtpRouterTest extends TestCase
 {
     public function testRouteRtcp()
     {
-        $rtpSenderMock = $this->getMockBuilder(RTCRtpSender::class)->disableOriginalConstructor()->getMock();
-        $rtpReceiverMock = $this->getMockBuilder(RTCRtpReceiver::class)->disableOriginalConstructor()->getMock();
+        $rtpSenderMock = $this->createStub(RTCRtpSender::class);
+        $rtpReceiverMock = $this->createStub(RTCRtpReceiver::class);
 
         $router = new RtpRouter();
         $router->setReceiver($rtpReceiverMock, [1234, 2345], [96, 97]);
@@ -90,8 +90,8 @@ class RtpRouterTest extends TestCase
 
     public function testRouteRtp()
     {
-        $rtpReceiverMock1 = $this->getMockBuilder(RTCRtpReceiver::class)->disableOriginalConstructor()->getMock();
-        $rtpReceiverMock2 = $this->getMockBuilder(RTCRtpReceiver::class)->disableOriginalConstructor()->getMock();
+        $rtpReceiverMock1 = $this->createStub(RTCRtpReceiver::class);
+        $rtpReceiverMock2 = $this->createStub(RTCRtpReceiver::class);
 
         $router = new RtpRouter();
         $router->setReceiver($rtpReceiverMock1, [1234, 2345], [96, 97]);
@@ -113,8 +113,8 @@ class RtpRouterTest extends TestCase
 
     public function testRouteRtpAmbiguousPayloadType()
     {
-        $rtpReceiverMock1 = $this->getMockBuilder(RTCRtpReceiver::class)->disableOriginalConstructor()->getMock();
-        $rtpReceiverMock2 = $this->getMockBuilder(RTCRtpReceiver::class)->disableOriginalConstructor()->getMock();
+        $rtpReceiverMock1 = $this->createStub(RTCRtpReceiver::class);
+        $rtpReceiverMock2 = $this->createStub(RTCRtpReceiver::class);
 
         $router = new RtpRouter();
         $router->setReceiver($rtpReceiverMock1, [1234, 2345], [96, 97]);

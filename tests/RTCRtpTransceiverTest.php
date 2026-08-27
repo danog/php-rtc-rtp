@@ -24,8 +24,8 @@ use Webrtc\RTPParameter\RTCRtpCodecCapability;
 #[UsesClass(\Webrtc\RTP\Sender\RTCRtpSender::class)]
 class RTCRtpTransceiverTest extends TestCase {
     public function testCodecPreferences(): void {
-        $rtpSenderMock = $this->getMockBuilder(RTCRtpSender::class)->disableOriginalConstructor()->getMock();
-        $rtpReceiverMock = $this->getMockBuilder(RTCRtpReceiver::class)->disableOriginalConstructor()->getMock();
+        $rtpSenderMock = $this->createStub(RTCRtpSender::class);
+        $rtpReceiverMock = $this->createStub(RTCRtpReceiver::class);
         $transceiver = new RTCRtpTransceiver(MediaKind::Audio, $rtpReceiverMock, $rtpSenderMock);
 
         // Test initial state
