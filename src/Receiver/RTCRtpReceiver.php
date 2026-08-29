@@ -75,7 +75,9 @@ final class RTCRtpReceiver implements RtpReceiverInterface
     private bool $started = false;
     private RTCStatsReport $stats;
     private TimestampMapper $timestampMapper;
+    /** @var array<int, int> */
     private array $lsr = [];
+    /** @var array<int, float> */
     private array $lsrTime = [];
     /** @var StreamStatistics[] */
     private array $remoteStreams = [];
@@ -87,7 +89,7 @@ final class RTCRtpReceiver implements RtpReceiverInterface
      * Whether assembled frames are delivered still encoded, instead of being decoded to raw media.
      */
     private bool $rawMode = false;
-    private string $rtcpTask;
+    private string $rtcpTask = "";
 
     /**
      * Constructor for RTCRtpReceiver.
@@ -173,7 +175,7 @@ final class RTCRtpReceiver implements RtpReceiverInterface
         foreach ($this->remoteStreams as $ssrc => $stream) {
             $this->stats->add(new RTCInboundRtpStreamStats(
                 id: "inbound_rtp_stream_" . spl_object_id($this),
-                ssrc: $ssrc,
+                ssrc: (int) $ssrc,
                 kind: $this->kind->value,
                 transportId: $this->transport->getReportTransport()->id,
                 packetsReceived: $stream->getPacketsReceived(),
@@ -215,11 +217,12 @@ final class RTCRtpReceiver implements RtpReceiverInterface
      */
     public function start(RTCRtpReceiveParameters $parameters): void
     {
-        if ($this->started) {
-            return;
-        }
-
+        $this->codecs = [];
+        $this->rtxSsrc = [];
         foreach ($parameters->codecs as $codec) {
+            if ($codec->payloadType === null) {
+                continue;
+            }
             $this->codecs[$codec->payloadType] = $codec;
         }
 
@@ -230,6 +233,12 @@ final class RTCRtpReceiver implements RtpReceiverInterface
         }
 
         $this->transport->setRtpReceiver($this, $parameters);
+        if ($this->started) {
+            $this->decoderQueue?->stop();
+            $this->decoderQueue = null;
+            $this->logger?->debug(" RTP Receiver reconfigured");
+            return;
+        }
         $this->runRtcp();
         $this->started = true;
     }
@@ -249,6 +258,7 @@ final class RTCRtpReceiver implements RtpReceiverInterface
      *
      * Cancels the RTCP timer and removes the receiver from the transport.
      */
+    #[\Override]
     public function stop(): void
 
     {
@@ -269,9 +279,10 @@ final class RTCRtpReceiver implements RtpReceiverInterface
      * @param RtcpPacketInterface $packet The RTCP packet to handle.
      * @throws DateMalformedStringException
      */
+    #[\Override]
     public function handleRtcpPacket(RtcpPacketInterface $packet): void
     {
-        $this->logger?->debug("Received RTCP packet: " . $packet);
+        $this->logger?->debug("Received RTCP packet: " . (string) $packet);
 
         if ($packet instanceof RtcpSrPacket) {
             $this->handleRtcpSrPacket($packet);
@@ -327,9 +338,10 @@ final class RTCRtpReceiver implements RtpReceiverInterface
      * @param int $arrivalTimeMs Time in milliseconds when the packet arrived.
      * @throws DateMalformedStringException
      */
+    #[\Override]
     public function handleRtpPacket(RtpPacket $packet, int $arrivalTimeMs): void
     {
-        $this->logger?->debug("Received RTP packet: " . $packet);
+        $this->logger?->debug("Received RTP packet: " . (string) $packet);
 
         if (!$this->enabled) {
             return;
@@ -359,7 +371,7 @@ final class RTCRtpReceiver implements RtpReceiverInterface
      */
     private function feedBitrateEstimator(RtpPacket $packet, int $arrivalTimeMs): void
     {
-        if ($this->remoteBitrateEstimator && $packet->getExtensions()->getAbsSendTime()) {
+        if ($this->remoteBitrateEstimator !== null && $packet->getExtensions()->getAbsSendTime() !== null) {
             $remb = $this->remoteBitrateEstimator->add(
                 $packet->getExtensions()->getAbsSendTime(),
                 $arrivalTimeMs,
@@ -367,12 +379,13 @@ final class RTCRtpReceiver implements RtpReceiverInterface
                 $packet->getSsrc()
             );
 
-            if ($this->rtcpSsrc && $remb) {
+            if ($this->rtcpSsrc !== null && $remb !== null) {
+                /** @var array{0: int, 1: int[]} $remb */
                 $rtcpPacket = new RtcpPsfbPacket(
                     fmt: RtcpConstants::RTCP_PSFB_APP,
                     ssrc: $this->rtcpSsrc,
                     mediaSsrc: 0,
-                    fci: RtpUtility::packRembFci(...$remb)
+                    fci: RtpUtility::packRembFci($remb[0], $remb[1])
                 );
 
                 $this->sendRtcp($rtcpPacket);
@@ -432,7 +445,7 @@ final class RTCRtpReceiver implements RtpReceiverInterface
     {
         if (CodecUtility::isRtx($codec)) {
             $originalSsrc = $this->rtxSsrc[$packet->getSsrc()] ?? null;
-            if (!$originalSsrc) {
+            if ($originalSsrc === null) {
                 $this->logger?->debug(sprintf("x RTX packet from unknown SSRC %d", $packet->getSsrc()));
                 return null;
             }
@@ -441,8 +454,12 @@ final class RTCRtpReceiver implements RtpReceiverInterface
                 return null;
             }
 
-            $codec = $this->codecs[$codec->parameters["apt"]];
-            $packet = RtpUtility::unwrapRtx($packet, $codec->payloadType, $originalSsrc);
+            $apt = $codec->parameters["apt"] ?? null;
+            if (!is_int($apt)) {
+                return null;
+            }
+            $codec = $this->codecs[$apt];
+            $packet = RtpUtility::unwrapRtx($packet, (int) $codec->payloadType, $originalSsrc);
         }
 
         return $packet;
@@ -473,7 +490,7 @@ final class RTCRtpReceiver implements RtpReceiverInterface
     {
         try {
             [, $decoded] = Codec::depayload($codec, $packet->payload);
-            $packet->setDecodedData($decoded);
+            $packet->setDecodedData((string) $decoded);
             return true;
         } catch (Exception $e) {
             $this->logger?->debug(sprintf(" x RTP payload parsing failed: %s", $e->getMessage()));
@@ -489,6 +506,9 @@ final class RTCRtpReceiver implements RtpReceiverInterface
      */
     private function processEncodedFrame(RtpPacket $packet, RTCRtpCodecParameters $codec): void
     {
+        if ($this->jitterBuffer === null) {
+            return;
+        }
         [$pliFlag, $encodedFrame] = $this->jitterBuffer->add($packet);
 
         if ($pliFlag) {
@@ -507,7 +527,7 @@ final class RTCRtpReceiver implements RtpReceiverInterface
     {
         $this->logger?->debug(" RTCP started");
 
-        $this->rtcpTask = EventLoop::repeat(0.5 + (random_int(0, 1000) / 1000), function () {
+        $this->rtcpTask = EventLoop::repeat(0.5 + ((float) random_int(0, 1000) / 1000.0), function () {
             try {
                 $rtcpPackets = $this->generateRtcpRrPacket();
                 if ($rtcpPackets) {
@@ -529,13 +549,14 @@ final class RTCRtpReceiver implements RtpReceiverInterface
         // RTCP RR
         $reports = [];
         foreach ($this->remoteStreams as $ssrc => $stream) {
+            $ssrc = (int) $ssrc;
             $lsr = 0;
             $dlsr = 0;
-            if (isset($this->lsr[$ssrc])) {
+            if (isset($this->lsr[$ssrc], $this->lsrTime[$ssrc])) {
                 $lsr = $this->lsr[$ssrc];
                 $delay = microtime(true) - $this->lsrTime[$ssrc];
                 if ($delay > 0 && $delay < 65536) {
-                    $dlsr = intval($delay * 65536);
+                    $dlsr = intval($delay * 65536.0);
                 }
             }
 
@@ -543,14 +564,14 @@ final class RTCRtpReceiver implements RtpReceiverInterface
                 $ssrc,
                 $stream->getFractionLost(),
                 $stream->getPacketsLost(),
-                $stream->getMaxSeq(),
+                $stream->getMaxSeq() ?? 0,
                 $stream->getJitter(),
                 $lsr,
                 $dlsr
             );
         }
 
-        if ($this->rtcpSsrc && !empty($reports)) {
+        if ($this->rtcpSsrc !== null && !empty($reports)) {
             return new RtcpRrPacket($this->rtcpSsrc, $reports);
         }
 
@@ -578,11 +599,11 @@ final class RTCRtpReceiver implements RtpReceiverInterface
      */
     public function setLogger(LoggerInterface $logger): void
     {
-        $logger = new class((string) $this->kind, $logger) extends \Psr\Log\AbstractLogger {
+        $logger = new class($this->kind->value, $logger) extends \Psr\Log\AbstractLogger {
             public function __construct(private readonly string $kind, private readonly LoggerInterface $logger) {}
-            public function log($level, $message, array $context = array()): void {
-                assert(is_string($message));
-                $this->logger->log($level, "RTCRtpReceiver($this->kind): $message", $context);
+            #[\Override]
+            public function log(mixed $level, string|\Stringable $message, array $context = array()): void {
+                $this->logger->log($level, "RTCRtpReceiver($this->kind): " . (string) $message, $context);
             }
         };
         $this->logger = $logger;
@@ -592,7 +613,7 @@ final class RTCRtpReceiver implements RtpReceiverInterface
      * Send an RTCP NACK (Negative Acknowledgment) to report missing RTP packets.
      *
      * @param int $mediaSsrc The SSRC of the media stream.
-     * @param array $lost An array of lost packet sequence numbers.
+     * @param int[] $lost An array of lost packet sequence numbers.
      */
     public function sendRtcpNack(int $mediaSsrc, array $lost): void
     {
@@ -625,7 +646,7 @@ final class RTCRtpReceiver implements RtpReceiverInterface
      */
     public function sendRtcpPli(int $mediaSsrc): void
     {
-        if ($this->rtcpSsrc) {
+        if ($this->rtcpSsrc !== null) {
             $packet = new RtcpPsfbPacket(
                 fmt: RtcpConstants::RTCP_PSFB_PLI,
                 ssrc: $this->rtcpSsrc,

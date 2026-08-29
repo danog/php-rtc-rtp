@@ -91,17 +91,29 @@ final class HeaderExtensionsMap
                     $headerExtensions->setRtpStreamId($xValue);
                     break;
                 case $this->ids->getAbsSendTime():
-                    $headerExtensions->setAbsSendTime(unpack("N", "\x00" . $xValue)[1]);
+                    $absSendTime = unpack("N", "\x00" . $xValue);
+                    if ($absSendTime !== false) {
+                        $headerExtensions->setAbsSendTime((int) $absSendTime[1]);
+                    }
                     break;
                 case $this->ids->getTransmissionOffset():
-                    $headerExtensions->setTransmissionOffset((unpack("N", $xValue . "\x00")[1]) >> 8);
+                    $transmissionOffset = unpack("N", $xValue . "\x00");
+                    if ($transmissionOffset !== false) {
+                        $headerExtensions->setTransmissionOffset(((int) $transmissionOffset[1]) >> 8);
+                    }
                     break;
                 case $this->ids->getAudioLevel():
-                    $vadLevel = unpack("C", $xValue)[1];
-                    $headerExtensions->setAudioLevel([(bool)($vadLevel & 0x80), $vadLevel & 0x7F]);
+                    $vadLevel = unpack("C", $xValue);
+                    if ($vadLevel !== false) {
+                        $level = (int) $vadLevel[1];
+                        $headerExtensions->setAudioLevel([(bool)($level & 0x80), $level & 0x7F]);
+                    }
                     break;
                 case $this->ids->getTransportSequenceNumber():
-                    $headerExtensions->setTransportSequenceNumber(unpack("n", $xValue)[1]);
+                    $transportSeq = unpack("n", $xValue);
+                    if ($transportSeq !== false) {
+                        $headerExtensions->setTransportSequenceNumber((int) $transportSeq[1]);
+                    }
                     break;
             }
         }
@@ -113,31 +125,33 @@ final class HeaderExtensionsMap
      * Packs RTP header extension values into binary format for outgoing packets.
      *
      * @param HeaderExtensions $values The extension values to encode.
-     * @return array                   Encoded RTP header extensions as (id, value) pairs.
+     * @return array{0: int, 1: string} Encoded RTP header extensions as (profile, value).
      */
     public function set(HeaderExtensions $values): array
     {
         $extensions = [];
 
-        if (!is_null($values->getMid()) && $this->ids->getMid()) {
-            $extensions[] = [$this->ids->getMid(), $values->getMid()];
+        if (!is_null($values->getMid()) && !is_null($this->ids->getMid())) {
+            $extensions[] = [(int) $this->ids->getMid(), (string) $values->getMid()];
         }
-        if (!is_null($values->getRepairedRtpStreamId()) && $this->ids->getRepairedRtpStreamId()) {
-            $extensions[] = [$this->ids->getRepairedRtpStreamId(), $values->getRepairedRtpStreamId()];
+        if (!is_null($values->getRepairedRtpStreamId()) && !is_null($this->ids->getRepairedRtpStreamId())) {
+            $extensions[] = [(int) $this->ids->getRepairedRtpStreamId(), (string) $values->getRepairedRtpStreamId()];
         }
-        if (!is_null($values->getRtpStreamId()) && $this->ids->getRtpStreamId()) {
-            $extensions[] = [$this->ids->getRtpStreamId(), $values->getRtpStreamId()];
+        if (!is_null($values->getRtpStreamId()) && !is_null($this->ids->getRtpStreamId())) {
+            $extensions[] = [(int) $this->ids->getRtpStreamId(), (string) $values->getRtpStreamId()];
         }
-        if (!is_null($values->getAbsSendTime()) && $this->ids->getAbsSendTime()) {
+        if (!is_null($values->getAbsSendTime()) && !is_null($this->ids->getAbsSendTime())) {
             $extensions[] = [$this->ids->getAbsSendTime(), substr(pack("N", $values->getAbsSendTime()), 1)];
         }
-        if (!is_null($values->getTransmissionOffset()) && $this->ids->getTransmissionOffset()) {
+        if (!is_null($values->getTransmissionOffset()) && !is_null($this->ids->getTransmissionOffset())) {
             $extensions[] = [$this->ids->getTransmissionOffset(), substr(pack("l", $values->getTransmissionOffset() << 8), 0, 2)];
         }
-        if (!is_null($values->getAudioLevel()) && $this->ids->getAudioLevel()) {
-            $extensions[] = [$this->ids->getAudioLevel(), pack("C", ($values->getAudioLevel()[0] ? 0x80 : 0) | ($values->getAudioLevel()[1] & 0x7F))];
+        $audioLevel = $values->getAudioLevel();
+        $audioLevelId = $this->ids->getAudioLevel();
+        if (is_array($audioLevel) && is_int($audioLevelId)) {
+            $extensions[] = [$audioLevelId, pack("C", (($audioLevel[0] ? 0x80 : 0) | ($audioLevel[1] & 0x7F)))];
         }
-        if (!is_null($values->getTransportSequenceNumber()) && $this->ids->getTransportSequenceNumber()) {
+        if (!is_null($values->getTransportSequenceNumber()) && !is_null($this->ids->getTransportSequenceNumber())) {
             $extensions[] = [$this->ids->getTransportSequenceNumber(), pack("n", $values->getTransportSequenceNumber())];
         }
 

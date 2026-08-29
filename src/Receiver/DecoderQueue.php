@@ -13,6 +13,7 @@ namespace Webrtc\RTP\Receiver;
 
 use Amp\Pipeline\Queue;
 use Revolt\EventLoop;
+use Webrtc\AVCodec\Frame\FrameInterface;
 use Webrtc\Codecs\DecoderInterface;
 use Webrtc\RTP\Jitter\JitterFrame;
 use Webrtc\RTP\MediaStreamTrack\RemoteStreamTrack;
@@ -36,6 +37,7 @@ final class DecoderQueue
      */
     public function __construct(private readonly DecoderInterface $decoder)
     {
+        /** @var Queue<JitterFrame> */
         $this->queue = new Queue();
     }
 
@@ -63,6 +65,7 @@ final class DecoderQueue
         EventLoop::queue(function () use ($track) {
             foreach ($this->queue->iterate() as $frame) {
                 $decodedFrame = $this->decoder->decode($frame);
+                /** @var FrameInterface[] $decodedFrame */
                 foreach ($decodedFrame as $decoded) {
                     $track->queueFrame($decoded);
                 }

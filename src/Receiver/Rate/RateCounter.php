@@ -20,6 +20,7 @@ final class RateCounter
     private ?int $originMs = null;
     private int $scale;
     private int $windowSize;
+    /** @var RateBucket[] */
     private array $buckets;
     private RateBucket $total;
 
@@ -110,6 +111,9 @@ final class RateCounter
      */
     private function eraseOld(int $nowMs): void
     {
+        if ($this->originMs === null) {
+            return;
+        }
         $newOriginMs = $nowMs - $this->windowSize + 1;
         while ($this->originMs < $newOriginMs) {
             $bucket = $this->buckets[$this->originIndex];

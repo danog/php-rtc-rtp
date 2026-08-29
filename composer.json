@@ -42,7 +42,8 @@
     "require-dev": {
         "phpunit/phpunit": "^13.0",
         "symfony/phpunit-bridge": "7.3.x-dev",
-        "dg/bypass-finals": "dev-master"
+        "dg/bypass-finals": "dev-master",
+        "bamarni/composer-bin-plugin": "^1.9"
     },
     "autoload": {
         "psr-4": {
@@ -54,5 +55,16 @@
             "Tests\\Webrtc\\RTP\\": "tests"
         }
     },
-    "minimum-stability": "stable"
+    "minimum-stability": "stable",
+    "config": {
+        "allow-plugins": {
+            "bamarni/composer-bin-plugin": true
+        }
+    },
+    "extra": {
+        "bamarni-bin": {
+            "bin-links": true,
+            "forward-command": true
+        }
+    }
 }

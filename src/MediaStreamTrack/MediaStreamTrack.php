@@ -16,7 +16,6 @@ use Amp\Pipeline\ConcurrentIterator;
 use Amp\Pipeline\Queue;
 use Evenement\EventEmitter;
 use Ramsey\Uuid\Uuid;
-use Webrtc\AVCodec\Data\Packet;
 use Webrtc\Codecs\EncodedPacket;
 use Webrtc\AVCodec\Frame\FrameInterface;
 use Webrtc\RTP\Enum\MediaKind;
@@ -48,7 +47,7 @@ abstract class MediaStreamTrack extends EventEmitter
     /**
      * A queue to hold frames for the track.
      *
-     * @var Queue
+     * @var Queue<FrameInterface|EncodedPacket>
      */
     protected Queue $frameQueue;
 
@@ -62,6 +61,7 @@ abstract class MediaStreamTrack extends EventEmitter
     public function __construct(MediaKind $kind, ?string $id = null)
     {
         $this->id = $id ?? Uuid::uuid4()->toString();
+        /** @var Queue<FrameInterface|EncodedPacket> */
         $this->frameQueue = new Queue();
         $this->kind = $kind;
     }
@@ -125,7 +125,7 @@ abstract class MediaStreamTrack extends EventEmitter
      * This is an abstract method that subclasses must implement.
      * It handles the retrieval or generation of the next frame or packet.
      *
-     * @return ConcurrentIterator<FrameInterface|Packet|EncodedPacket> The next frame or packet
+     * @return ConcurrentIterator<FrameInterface|EncodedPacket> The next frame or packet
      */
     final public function getConsumer(): ConcurrentIterator {
         return $this->frameQueue->iterate();

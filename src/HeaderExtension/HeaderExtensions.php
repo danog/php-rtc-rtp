@@ -16,40 +16,59 @@ use Webrtc\Mixin\DataClass;
 #[DataClass]
 final class HeaderExtensions
 {
-    private mixed $mid = null;
-    private mixed $repairedRtpStreamId = null;
-    private mixed $rtpStreamId = null;
+    private int|string|null $mid = null;
+    private int|string|null $repairedRtpStreamId = null;
+    private int|string|null $rtpStreamId = null;
     private ?int $absSendTime = null;
     private ?int $transmissionOffset = null;
-    private mixed $audioLevel = null;
+    /** @var array{0: bool, 1: int}|int|null */
+    private array|int|null $audioLevel = null;
     private ?int $transportSequenceNumber = null;
 
-    public function getMid(): mixed
+    /**
+     * @return int|string|null
+     */
+    public function getMid(): int|string|null
     {
         return $this->mid;
     }
 
-    public function setMid(mixed $mid): void
+    /**
+     * @param int|null|string $mid
+     */
+    public function setMid(int|string|null $mid): void
     {
         $this->mid = $mid;
     }
 
-    public function getRepairedRtpStreamId(): mixed
+    /**
+     * @return int|string|null
+     */
+    public function getRepairedRtpStreamId(): int|string|null
     {
         return $this->repairedRtpStreamId;
     }
 
-    public function setRepairedRtpStreamId(mixed $repairedRtpStreamId): void
+    /**
+     * @param int|null|string $repairedRtpStreamId
+     */
+    public function setRepairedRtpStreamId(int|string|null $repairedRtpStreamId): void
     {
         $this->repairedRtpStreamId = $repairedRtpStreamId;
     }
 
-    public function getRtpStreamId(): mixed
+    /**
+     * @return int|string|null
+     */
+    public function getRtpStreamId(): int|string|null
     {
         return $this->rtpStreamId;
     }
 
-    public function setRtpStreamId(mixed $rtpStreamId): void
+    /**
+     * @param int|null|string $rtpStreamId
+     */
+    public function setRtpStreamId(int|string|null $rtpStreamId): void
     {
         $this->rtpStreamId = $rtpStreamId;
     }
@@ -74,12 +93,18 @@ final class HeaderExtensions
         $this->transmissionOffset = $transmissionOffset;
     }
 
-    public function getAudioLevel(): mixed
+    /**
+     * @return array{0: bool, 1: int}|int|null
+     */
+    public function getAudioLevel(): array|int|null
     {
         return $this->audioLevel;
     }
 
-    public function setAudioLevel(mixed $audioLevel): void
+    /**
+     * @param array{0: bool, 1: int}|int $audioLevel
+     */
+    public function setAudioLevel(array|int $audioLevel): void
     {
         $this->audioLevel = $audioLevel;
     }

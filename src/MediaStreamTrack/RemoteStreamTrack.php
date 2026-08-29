@@ -34,7 +34,7 @@ final class RemoteStreamTrack extends MediaStreamTrack
      *
      * This method includes a frame that will be processed later when `receiveData()` is called.
      *
-     * @param FrameInterface $frame The frame to add to the queue.
+     * @param FrameInterface|EncodedPacket $frame The frame to add to the queue.
      */
     public function queueFrame(FrameInterface|EncodedPacket $frame): void
     {

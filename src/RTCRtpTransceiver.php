@@ -17,8 +17,9 @@ use Webrtc\RTP\Enum\MediaKind;
 use Webrtc\RTP\Receiver\RTCRtpReceiver;
 use Webrtc\RTP\Sender\RTCRtpSender;
 use Webrtc\RTPParameter\RTCRtpCodecParameters;
+use Webrtc\RTPParameter\RTCRtpCodecCapability;
+use Webrtc\RTPParameter\RTCRtpHeaderExtensionParameters;
 use Webrtc\SDP\Enum\SDPDirections;
-use Webrtc\Srtp\Exception\SrtpException;
 
 /**
  * Represents a bidirectional RTP stream with a sender and receiver for WebRTC communications.
@@ -55,7 +56,7 @@ final class RTCRtpTransceiver
     /** @var bool Whether the transceiver is stopped. */
     private bool $stopped = false;
 
-    /** @var array List of preferred codecs. */
+    /** @var RTCRtpCodecCapability[] List of preferred codecs. */
     private array $preferredCodecs = [];
 
     /** @var RTCRTPDtlsTransportInterface|null The transport for this transceiver. */
@@ -64,10 +65,10 @@ final class RTCRtpTransceiver
     /** @var bool Whether this transceiver is bundled. */
     private bool $bundled = false;
 
-    /** @var array List of codecs. */
+    /** @var RTCRtpCodecParameters[] List of codecs. */
     private array $codecs = [];
 
-    /** @var array List of header extensions. */
+    /** @var RTCRtpHeaderExtensionParameters[] List of header extensions. */
     private array $headerExtensions = [];
 
     /**
@@ -107,9 +108,9 @@ final class RTCRtpTransceiver
      * The preferred direction indicates the desired direction set by the application,
      * which will be used in the next offer/answer exchange.
      *
-     * @return SDPDirections One of 'sendrecv', 'sendonly', 'recvonly', or 'inactive'.
+     * @return SDPDirections|null One of 'sendrecv', 'sendonly', 'recvonly', or 'inactive'.
      */
-    public function getDirection(): SDPDirections
+    public function getDirection(): SDPDirections|null
     {
         return $this->direction;
     }
@@ -188,7 +189,7 @@ final class RTCRtpTransceiver
      * This allows applications to specify which codecs should be preferred
      * in offer/answer negotiations, and in what order of preference.
      *
-     * @param array $codecs A list of RTCRtpCodecCapability objects in decreasing order of preference.
+     * @param RTCRtpCodecCapability[] $codecs A list of RTCRtpCodecCapability objects in decreasing order of preference.
      * @throws InvalidArgumentException If a codec is not in the capabilities.
      */
     public function setCodecPreferences(array $codecs): void
@@ -216,8 +217,6 @@ final class RTCRtpTransceiver
      *
      * This stops both the sender and receiver components and marks the transceiver
      * as stopped. A stopped transceiver cannot be restarted.
-     *
-     * @throws SrtpException
      */
     public function stop(): void
     {
@@ -357,7 +356,7 @@ final class RTCRtpTransceiver
     /**
      * Sets the negotiated codecs for this transceiver.
      *
-     * @param array $codecs List of negotiated codec parameters.
+     * @param RTCRtpCodecParameters[] $codecs List of negotiated codec parameters.
      */
     public function setCodecs(array $codecs): void
     {
@@ -367,7 +366,7 @@ final class RTCRtpTransceiver
     /**
      * Sets the negotiated header extensions for this transceiver.
      *
-     * @param array $headerExtensions List of header extension parameters.
+     * @param RTCRtpHeaderExtensionParameters[] $headerExtensions List of header extension parameters.
      */
     public function setHeaderExtensions(array $headerExtensions): void
     {

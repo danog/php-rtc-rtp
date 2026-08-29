@@ -26,6 +26,7 @@ use Webrtc\RTP\RtpPacket;
 final class NackGenerator
 {
     private ?int $maxSeq = null;
+    /** @var array<int, bool> */
     private array $missing = [];
 
     /**
@@ -106,7 +107,7 @@ final class NackGenerator
     /**
      * Get the list of missing sequence numbers.
      *
-     * @return array List of missing sequence numbers.
+     * @return int[] List of missing sequence numbers.
      */
     public function getMissing(): array
     {

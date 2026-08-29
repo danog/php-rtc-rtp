@@ -32,6 +32,7 @@ final class RtpPacket
     private int $sequenceNumber = 0;
     private int $timestamp = 0;
     private int $ssrc = 0;
+    /** @var int[] */
     private array $csrc = [];
     private HeaderExtensions $extensions;
     public string $payload = "";
@@ -84,28 +85,36 @@ final class RtpPacket
      * Decodes the RTP header fields from binary data.
      *
      * @param string $data The binary RTP packet data.
-     * @return array Decoded header fields.
+     * @return array{version: int, padding: int, extension: int, cc: int, marker: int, payloadType: int, sequenceNumber: int, timestamp: int, ssrc: int} Decoded header fields.
      * @throws RtpPacketException If the version is invalid.
      */
     private static function decodeHeader(string $data): array
     {
         $header = unpack("C1vpxcc/C1mpt/n1sequence/N1timestamp/N1ssrc", substr($data, 0, self::RTP_HEADER_LENGTH));
+        if ($header === false) {
+            throw new RtpPacketException("RTP packet header is malformed");
+        }
+        $vpxcc = (int) $header['vpxcc'];
+        $mpt = (int) $header['mpt'];
+        $sequence = (int) $header['sequence'];
+        $timestamp = (int) $header['timestamp'];
+        $ssrc = (int) $header['ssrc'];
 
-        $version = $header['vpxcc'] >> 6;
+        $version = $vpxcc >> 6;
         if ($version !== 2) {
             throw new RtpPacketException("RTP packet has invalid version");
         }
 
         return [
             'version' => $version,
-            'padding' => ($header['vpxcc'] >> 5) & 1,
-            'extension' => ($header['vpxcc'] >> 4) & 1,
-            'cc' => $header['vpxcc'] & 0x0F,
-            'marker' => $header['mpt'] >> 7,
-            'payloadType' => $header['mpt'] & 0x7F,
-            'sequenceNumber' => $header['sequence'],
-            'timestamp' => $header['timestamp'],
-            'ssrc' => $header['ssrc']
+            'padding' => ($vpxcc >> 5) & 1,
+            'extension' => ($vpxcc >> 4) & 1,
+            'cc' => $vpxcc & 0x0F,
+            'marker' => $mpt >> 7,
+            'payloadType' => $mpt & 0x7F,
+            'sequenceNumber' => $sequence,
+            'timestamp' => $timestamp,
+            'ssrc' => $ssrc
         ];
     }
 
@@ -125,7 +134,11 @@ final class RtpPacket
             if (strlen($data) < $pos + 4) {
                 throw new RtpPacketException("RTP packet has truncated CSRC");
             }
-            $packet->csrc[] = unpack("N", substr($data, $pos, 4))[1];
+            $raw = unpack("N", substr($data, $pos, 4));
+            if ($raw === false) {
+                throw new RtpPacketException("RTP packet has invalid CSRC");
+            }
+            $packet->csrc[] = (int) $raw[1];
             $pos += 4;
         }
         return $pos;
@@ -148,7 +161,11 @@ final class RtpPacket
         }
 
         $extHeader = unpack("n1profile/n1length", substr($data, $pos, 4));
-        $extLength = $extHeader['length'] * 4;
+        if ($extHeader === false) {
+            throw new RtpPacketException("RTP packet has malformed extension header");
+        }
+        $profile = (int) $extHeader['profile'];
+        $extLength = (int) $extHeader['length'] * 4;
         $pos += 4;
 
         if (strlen($data) < $pos + $extLength) {
@@ -157,7 +174,7 @@ final class RtpPacket
 
         $extensionValue = substr($data, $pos, $extLength);
         $pos += $extLength;
-        $packet->setExtensions($extensionsMap->get($extHeader['profile'], $extensionValue));
+        $packet->setExtensions($extensionsMap->get($profile, $extensionValue));
 
         return $pos;
     }
@@ -203,7 +220,7 @@ final class RtpPacket
         $padding = $this->paddingSize > 0;
         $data = pack(
             "C2nN2",
-            ($this->version << 6) | ($padding << 5) | ($hasExtension << 4) | count($this->csrc),
+            ($this->version << 6) | ((int) $padding << 5) | ($hasExtension << 4) | count($this->csrc),
             ($this->marker << 7) | $this->payloadType,
             $this->sequenceNumber,
             $this->timestamp,
@@ -302,7 +319,7 @@ final class RtpPacket
     /**
      * Gets the contributing sources (CSRC).
      *
-     * @return array List of 32-bit CSRC identifiers.
+     * @return int[] List of 32-bit CSRC identifiers.
      */
     public function getCsrc(): array
     {
@@ -392,7 +409,7 @@ final class RtpPacket
     /**
      * Sets the contributing sources (CSRC).
      *
-     * @param array $csrc List of 32-bit CSRC identifiers.
+     * @param int[] $csrc List of 32-bit CSRC identifiers.
      */
     public function setCsrc(array $csrc): void
     {

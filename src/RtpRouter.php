@@ -32,27 +32,27 @@ use Webrtc\RTP\Sender\RtpSenderInterface;
  */
 final class RtpRouter
 {
-    /** @var array List of registered receivers. */
+    /** @var array<int, RtpReceiverInterface> List of registered receivers. */
     private array $receivers = [];
 
-    /** @var array Map of SSRC to sender instances. */
+    /** @var array<int, RtpSenderInterface> Map of SSRC to sender instances. */
     private array $senders = [];
 
-    /** @var array Map of MID values to receiver instances. */
+    /** @var array<string, RtpReceiverInterface> Map of MID values to receiver instances. */
     private array $midTable = [];
 
-    /** @var array Map of SSRC to receiver instances. */
+    /** @var array<int, RtpReceiverInterface> Map of SSRC to receiver instances. */
     private array $ssrcTable = [];
 
-    /** @var array Map of payload types to receiver instances. */
+    /** @var array<int, array<int, RtpReceiverInterface>> Map of payload types to receiver instances. */
     private array $payloadTypeTable = [];
 
     /**
      * Registers a receiver with associated SSRCs, payload types, and optional MID.
      *
      * @param RtpReceiverInterface $receiver The receiver instance to register.
-     * @param array $ssrcs List of SSRCs associated with this receiver.
-     * @param array $payloadTypes List of payload types associated with this receiver.
+     * @param int[] $ssrcs List of SSRCs associated with this receiver.
+     * @param int[] $payloadTypes List of payload types associated with this receiver.
      * @param string|null $mid Optional media identification (MID) value.
      */
     public function setReceiver(RtpReceiverInterface $receiver, array $ssrcs, array $payloadTypes, ?string $mid = null): void
@@ -90,7 +90,7 @@ final class RtpRouter
     {
         $recipients = [];
 
-        $addRecipient = function ($recipient) use (&$recipients) {
+        $addRecipient = function (RtpReceiverInterface|RtpSenderInterface|null $recipient) use (&$recipients): void {
             if ($recipient !== null) {
                 $recipients[] = $recipient;
             }
@@ -99,7 +99,9 @@ final class RtpRouter
         if ($packet instanceof RtcpSrPacket) {
             $addRecipient($this->ssrcTable[$packet->getSsrc()] ?? null);
         } elseif ($packet instanceof RtcpByePacket) {
-            foreach ($packet->getSources() as $source) {
+            $sources = $packet->getSources();
+            /** @var int[] $sources */
+            foreach ($sources as $source) {
                 $addRecipient($this->ssrcTable[$source] ?? null);
             }
         }
@@ -155,11 +157,11 @@ final class RtpRouter
      */
     public function removeReceiver(RtpReceiverInterface $receiver): void
     {
-        $this->receivers = array_filter($this->receivers, fn($r) => $r !== $receiver);
+        $this->receivers = array_filter($this->receivers, fn(RtpReceiverInterface $r) => $r !== $receiver);
         $this->discard($this->midTable, $receiver);
         $this->discard($this->ssrcTable, $receiver);
         foreach ($this->payloadTypeTable as &$receivers) {
-            $receivers = array_filter($receivers, fn($r) => $r !== $receiver);
+            $receivers = array_filter($receivers, fn(RtpReceiverInterface $r) => $r !== $receiver);
         }
     }
 
@@ -176,10 +178,12 @@ final class RtpRouter
     /**
      * Removes all occurrences of a value from an associative array.
      *
-     * @param array $array The array to modify.
-     * @param mixed $value The value to remove.
+     * @template TKey of array-key
+     * @template T of RtpReceiverInterface|RtpSenderInterface
+     * @param array<TKey, T> $array The array to modify.
+     * @param T $value The value to remove.
      */
-    private function discard(array &$array, mixed $value): void
+    private function discard(array &$array, RtpReceiverInterface|RtpSenderInterface $value): void
     {
         foreach ($array as $key => $val) {
             if ($val === $value) {

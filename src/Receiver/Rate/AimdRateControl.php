@@ -161,14 +161,14 @@ final class AimdRateControl
     {
         if ($this->avgMaxBitrateKbps !== null) {
             $sigmaKbps = sqrt($this->varMaxBitrateKbps * $this->avgMaxBitrateKbps);
-            if ($estimatedThroughputKbps >= $this->avgMaxBitrateKbps + 3 * $sigmaKbps) {
+            if ($estimatedThroughputKbps >= $this->avgMaxBitrateKbps + 3.0 * $sigmaKbps) {
                 $this->nearMax = false;
                 $this->avgMaxBitrateKbps = null;
             }
         }
 
         $increaseAmount = $this->nearMax
-            ? $this->additiveRateIncrease($this->lastChangeMs, $nowMs)
+            ? $this->additiveRateIncrease($this->lastChangeMs ?? $nowMs, $nowMs)
             : $this->multiplicativeRateIncrease($this->currentBitrate, $this->lastChangeMs, $nowMs);
 
         $this->lastChangeMs = $nowMs;
@@ -180,13 +180,14 @@ final class AimdRateControl
      *
      * @param float $estimatedThroughputKbps Estimated throughput in kbps.
      * @param int $nowMs Current time in milliseconds.
+     *
      * @return int New reduced bitrate.
      */
     private function decreaseBitrate(float $estimatedThroughputKbps, int $nowMs): int
     {
         if ($this->avgMaxBitrateKbps !== null) {
             $sigmaKbps = sqrt($this->varMaxBitrateKbps * $this->avgMaxBitrateKbps);
-            if ($estimatedThroughputKbps < $this->avgMaxBitrateKbps - 3 * $sigmaKbps) {
+            if ($estimatedThroughputKbps < $this->avgMaxBitrateKbps - 3.0 * $sigmaKbps) {
                 $this->avgMaxBitrateKbps = null;
             }
         }
@@ -197,7 +198,7 @@ final class AimdRateControl
         $this->lastChangeMs = $nowMs;
         $this->state = RateControlState::HOLD;
 
-        return round(0.85 * $this->latestEstimatedThroughput);
+        return intval(round(0.85 * (float) $this->latestEstimatedThroughput));
     }
 
     /**
@@ -215,19 +216,19 @@ final class AimdRateControl
     /**
      * Calculates multiplicative bitrate increase based on time and current rate.
      *
-     * @param int|null $newBitrate Current bitrate.
+     * @param int $newBitrate Current bitrate.
      * @param int|null $lastMs Last time bitrate changed.
      * @param int $nowMs Current time.
      * @return int Increase amount.
      */
-    private function multiplicativeRateIncrease(?int $newBitrate, ?int $lastMs, int $nowMs): int
+    private function multiplicativeRateIncrease(int $newBitrate, ?int $lastMs, int $nowMs): int
     {
         $alpha = 1.08;
         if ($lastMs !== null) {
             $elapsedMs = min($nowMs - $lastMs, 1000);
             $alpha = pow($alpha, $elapsedMs / 1000);
         }
-        return intval(max(($alpha - 1) * $newBitrate, 1000));
+        return intval(max(($alpha - 1.0) * (float) $newBitrate, 1000));
     }
 
     /**
@@ -239,7 +240,7 @@ final class AimdRateControl
      */
     private function clampBitrate(int $newBitrate, int $estimatedThroughput): int
     {
-        $maxBitrate = max(intval(1.5 * $estimatedThroughput) + 10000, $this->currentBitrate);
+        $maxBitrate = max(intval(1.5 * (float) $estimatedThroughput) + 10000, $this->currentBitrate);
         return min($newBitrate, $maxBitrate);
     }
 
@@ -250,12 +251,12 @@ final class AimdRateControl
      */
     private function nearMaxRateIncrease(): int
     {
-        $bitsPerFrame = $this->currentBitrate / 30;
-        $packetsPerFrame = ceil($bitsPerFrame / (8 * 1200));
+        $bitsPerFrame = (float) $this->currentBitrate / 30.0;
+        $packetsPerFrame = ceil($bitsPerFrame / (8.0 * 1200.0));
         $avgPacketSizeBits = $bitsPerFrame / $packetsPerFrame;
 
         $responseTime = $this->rtt + 100;
-        return max(4000, intval(($avgPacketSizeBits * 1000) / $responseTime));
+        return max(4000, intval(($avgPacketSizeBits * 1000.0) / (float) $responseTime));
     }
 
     /**
@@ -269,12 +270,12 @@ final class AimdRateControl
         if ($this->avgMaxBitrateKbps === null) {
             $this->avgMaxBitrateKbps = $estimatedThroughputKbps;
         } else {
-            $this->avgMaxBitrateKbps = (1 - $alpha) * $this->avgMaxBitrateKbps + $alpha * $estimatedThroughputKbps;
+            $this->avgMaxBitrateKbps = (1.0 - $alpha) * $this->avgMaxBitrateKbps + $alpha * $estimatedThroughputKbps;
         }
 
-        $norm = max(1, $this->avgMaxBitrateKbps);
-        $this->varMaxBitrateKbps = (1 - $alpha) * $this->varMaxBitrateKbps + $alpha *
-            pow($this->avgMaxBitrateKbps - $estimatedThroughputKbps, 2) / $norm;
+        $norm = max(1.0, $this->avgMaxBitrateKbps);
+        $this->varMaxBitrateKbps = (1.0 - $alpha) * $this->varMaxBitrateKbps + $alpha *
+            pow($this->avgMaxBitrateKbps - $estimatedThroughputKbps, 2.0) / $norm;
         $this->varMaxBitrateKbps = max(0.4, min($this->varMaxBitrateKbps, 2.5));
     }
 

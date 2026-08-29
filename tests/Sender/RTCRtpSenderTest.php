@@ -30,28 +30,6 @@ use Webrtc\Stats\RTCTransportStats;
 #[UsesClass(HeaderExtensionsMap::class)]
 #[UsesClass(MediaStreamTrack::class)]
 #[UsesClass(RtpUtility::class)]
-#[UsesClass(\Webrtc\AVCodec\AVCodec::class)]
-#[UsesClass(\Webrtc\AVCodec\AVFilter::class)]
-#[UsesClass(\Webrtc\AVCodec\AVFormat::class)]
-#[UsesClass(\Webrtc\AVCodec\Filter\Graph::class)]
-#[UsesClass(\Webrtc\Codecs\CodecUtility::class)]
-#[UsesClass(\Webrtc\RTCP\RtcpByePacket::class)]
-#[UsesClass(\Webrtc\RTCP\RtcpPsfbPacket::class)]
-#[UsesClass(\Webrtc\RTCP\RtcpReceiverInfo::class)]
-#[UsesClass(\Webrtc\RTCP\RtcpRrPacket::class)]
-#[UsesClass(\Webrtc\RTCP\RtcpRtpfbPacket::class)]
-#[UsesClass(\Webrtc\RTPParameter\RTCRtcpParameters::class)]
-#[UsesClass(\Webrtc\RTPParameter\RTCRtpCodecParameters::class)]
-#[UsesClass(\Webrtc\RTPParameter\RTCRtpParameters::class)]
-#[UsesClass(\Webrtc\RTPParameter\RTCRtpSendParameters::class)]
-#[UsesClass(\Webrtc\Stats\RTCOutboundRtpStreamStats::class)]
-#[UsesClass(\Webrtc\Stats\RTCReceivedRtpStreamStats::class)]
-#[UsesClass(\Webrtc\Stats\RTCRemoteInboundRtpStreamStats::class)]
-#[UsesClass(\Webrtc\Stats\RTCRtpStreamStats::class)]
-#[UsesClass(\Webrtc\Stats\RTCSentRtpStreamStats::class)]
-#[UsesClass(\Webrtc\Stats\RTCStats::class)]
-#[UsesClass(\Webrtc\Stats\RTCStatsReport::class)]
-#[UsesClass(\Webrtc\Stats\RTCTransportStats::class)]
 #[CoversClass(RTCRtpSender::class)]
 class RTCRtpSenderTest extends TestCase
 {
@@ -208,6 +186,21 @@ class RTCRtpSenderTest extends TestCase
         $this->assertFalse($sender->isEnabled());
         $report = $sender->getStats();
         $this->assertInstanceOf(RTCStatsReport::class, $report);
+        $sender->stop();
+    }
+
+    public function testStartReconfiguresRunningSender(): void
+    {
+        $sender = new RTCRtpSender(new VideoStreamTrack(), $this->transportMock);
+        $first = $this->getRTCRtpSendParameters();
+        $second = new RTCRtpSendParameters(codecs: [
+            new RTCRtpCodecParameters(mimeType: "video/H264", clockRate: 90000, payloadType: 120),
+        ]);
+
+        $sender->start($first);
+        $sender->start($second);
+
+        $this->assertSame([$first, $second], $this->transportMock->senderParameters);
         $sender->stop();
     }
 

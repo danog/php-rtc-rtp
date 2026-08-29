@@ -63,7 +63,7 @@ final class StreamStatistics
         }
 
         if ($inOrder) {
-            $arrival = intval(microtime(true) * $this->clockRate);
+            $arrival = intval(microtime(true) * (float) $this->clockRate);
 
             if ($this->maxSeq !== null && $packet->getSequenceNumber() < $this->maxSeq) {
                 $this->cycles += (1 << 16);
@@ -71,7 +71,12 @@ final class StreamStatistics
             $this->maxSeq = $packet->getSequenceNumber();
 
             // Jitter calculation
-            if ($packet->getTimestamp() !== $this->lastTimestamp && $this->packetsReceived > 1) {
+            if (
+                $this->lastArrival !== null &&
+                $this->lastTimestamp !== null &&
+                $packet->getTimestamp() !== $this->lastTimestamp &&
+                $this->packetsReceived > 1
+            ) {
                 $diff = abs(
                     ($arrival - $this->lastArrival) - ($packet->getTimestamp() - $this->lastTimestamp)
                 );

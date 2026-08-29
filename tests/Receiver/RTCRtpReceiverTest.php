@@ -201,6 +201,22 @@ class RTCRtpReceiverTest extends TestCase
         self::assertTrue(true);
     }
 
+    public function testStartReconfiguresRunningReceiver(): void
+    {
+        $receiver = new RTCRtpReceiver(MediaKind::Audio, $this->transportMock);
+        $receiver->setTrack(new RemoteStreamTrack(MediaKind::Audio));
+        $receiver->setRtcpSsrc(1234);
+        $first = $this->getRTCRtpReceiveParametersAudio();
+        $second = $this->getRTCRtpReceiveParametersAudio();
+        $second->codecs[0]->payloadType = 120;
+
+        $receiver->start($first);
+        $receiver->start($second);
+
+        $this->assertSame([$first, $second], $this->transportMock->receiverParameters);
+        $receiver->stop();
+    }
+
     public function testRtpAndRtcp()
     {
         if (!AVCodec::isAvailable()) {

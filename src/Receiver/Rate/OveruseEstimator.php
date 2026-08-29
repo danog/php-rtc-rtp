@@ -31,7 +31,11 @@ final class OveruseEstimator {
     /** Minimum number of frame intervals to store for frame period estimation */
     const MIN_FRAME_PERIOD_HISTORY_LENGTH = 60;
 
-    /** Error covariance matrix for Kalman filter */
+    /**
+     * Error covariance matrix for Kalman filter.
+     *
+     * @var array{0: array{0: float, 1: float}, 1: array{0: float, 1: float}}
+     */
     private array $E = [[100.0, 0.0], [0.0, 0.1]];
 
     /** Number of inter-arrival deltas used */
@@ -44,9 +48,13 @@ final class OveruseEstimator {
     private float $previousOffset = 0.0;
 
     /** Kalman filter slope estimate */
-    private float $slope = 1 / 64;
+    private float $slope = 1.0 / 64.0;
 
-    /** History of timestamp deltas for minimum frame period tracking */
+    /**
+     * History of timestamp deltas for minimum frame period tracking.
+     *
+     * @var float[]
+     */
     private array $tsDeltaHist = [];
 
     /** Estimated average noise */
@@ -55,7 +63,11 @@ final class OveruseEstimator {
     /** Estimated variance of noise */
     private float $varNoise = 50.0;
 
-    /** Process noise parameters for Kalman filter */
+    /**
+     * Process noise parameters for Kalman filter.
+     *
+     * @var array{0: float, 1: float}
+     */
     private array $processNoise = [1e-13, 1e-3];
 
     /**
@@ -86,7 +98,7 @@ final class OveruseEstimator {
      */
     public function update(int $timeDeltaMs, float $timestampDeltaMs, int $sizeDelta, BandwidthUsage $currentHypothesis): void {
         $minFramePeriod = $this->updateMinFramePeriod($timestampDeltaMs);
-        $tTsDelta = $timeDeltaMs - $timestampDeltaMs;
+        $tTsDelta = (float) $timeDeltaMs - $timestampDeltaMs;
         $this->numOfDeltas = min($this->numOfDeltas + 1, self::MIN_NUM_DELTAS);
 
         $this->updateKalmanFilter($currentHypothesis);
@@ -108,7 +120,7 @@ final class OveruseEstimator {
 
         if (($currentHypothesis === BandwidthUsage::OVERUSING && $this->offset < $this->previousOffset) ||
             ($currentHypothesis === BandwidthUsage::UNDERUSING && $this->offset > $this->previousOffset)) {
-            $this->E[1][1] += 10 * $this->processNoise[1];
+            $this->E[1][1] += 10.0 * $this->processNoise[1];
         }
     }
 
@@ -120,7 +132,7 @@ final class OveruseEstimator {
      * @return float The residual value.
      */
     private function calculateResidual(float $tTsDelta, int $sizeDelta): float {
-        return $tTsDelta - $this->slope * $sizeDelta - $this->offset;
+        return $tTsDelta - $this->slope * (float) $sizeDelta - $this->offset;
     }
 
     /**
@@ -145,7 +157,7 @@ final class OveruseEstimator {
      * @param int $sizeDelta Packet size delta in bytes.
      */
     private function updateState(float $residual, int $sizeDelta): void {
-        $h = [$sizeDelta, 1.0];
+        $h = [(float) $sizeDelta, 1.0];
         $Eh = [
             $this->E[0][0] * $h[0] + $this->E[0][1] * $h[1],
             $this->E[1][0] * $h[0] + $this->E[1][1] * $h[1]
@@ -200,9 +212,9 @@ final class OveruseEstimator {
      */
     private function updateNoiseEstimate(float $residual, float $tsDelta): void {
         $alpha = $this->numOfDeltas > 300 ? 0.002 : 0.01;
-        $beta = pow(1 - $alpha, $tsDelta * 30.0 / 1000.0);
-        $this->avgNoise = $beta * $this->avgNoise + (1 - $beta) * $residual;
-        $this->varNoise = $beta * $this->varNoise + (1 - $beta) * pow($this->avgNoise - $residual, 2);
+        $beta = pow(1.0 - $alpha, $tsDelta * 30.0 / 1000.0);
+        $this->avgNoise = $beta * $this->avgNoise + (1.0 - $beta) * $residual;
+        $this->varNoise = $beta * $this->varNoise + (1.0 - $beta) * pow($this->avgNoise - $residual, 2);
 
         if ($this->varNoise < 1) {
             $this->varNoise = 1;

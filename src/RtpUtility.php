@@ -60,7 +60,11 @@ final class RtpUtility
     public static function unpackPacketsLost(string $data): int
     {
         $data = (ord($data[0]) & 0x80) ? "\xFF" . $data : "\x00" . $data;
-        $value = unpack("N", $data)[1];
+        $raw = unpack("N", $data);
+        if ($raw === false) {
+            throw new InvalidArgumentException("Failed to unpack packets lost value");
+        }
+        $value = (int) $raw[1];
 
         // Convert to signed 32-bit integer
         if ($value & 0x80000000) {
@@ -89,6 +93,9 @@ final class RtpUtility
         return pack("CCn", (2 << 6) | $count, $packetType, strlen($payload) / 4) . $payload;
     }
 
+    /**
+     * @param int[] $ssrcs
+     */
     public static function packRembFci(int $bitrate, array $ssrcs): string
     {
         $data = "REMB";
@@ -113,6 +120,9 @@ final class RtpUtility
         return $data;
     }
 
+    /**
+     * @return array{0: int, 1: int[]}
+     */
     public static function unpackRembFci(string $data): array
     {
         if (strlen($data) < 8 || !str_starts_with($data, "REMB")) {
@@ -126,7 +136,11 @@ final class RtpUtility
         $pos = 8;
         $ssrcs = [];
         for ($i = 0; $i < ord($data[4]); $i++) {
-            $ssrcs[] = unpack("N", substr($data, $pos, 4))[1];
+            $raw = unpack("N", substr($data, $pos, 4));
+            if ($raw === false) {
+                throw new InvalidArgumentException("Invalid REMB SSRC data");
+            }
+            $ssrcs[] = (int) $raw[1];
             $pos += 4;
         }
 
@@ -140,12 +154,17 @@ final class RtpUtility
 
     /**
      * Parse header extensions according to RFC 5285.
+     *
+     * @return array<int, array{0: int, 1: string}>
      */
     public static function unpackHeaderExtensions(int $extensionProfile, ?string $extensionValue): array
     {
         $extensions = [];
+        if ($extensionValue === null) {
+            return $extensions;
+        }
         $pos = 0;
-        $length = strlen($extensionValue ?? "");
+        $length = strlen($extensionValue);
 
         if ($extensionProfile === 0xBEDE) {
             // One-Byte Header
@@ -201,6 +220,9 @@ final class RtpUtility
 
     /**
      * Serialize header extensions according to RFC 5285.
+     *
+     * @param array<int, array{0: int, 1: string}> $extensions
+     * @return array{0: int, 1: string}
      */
     public static function packHeaderExtensions(array $extensions): array
     {
@@ -244,20 +266,24 @@ final class RtpUtility
         // Iterate through the buffer in 16-bit (2-byte) chunks
         for ($i = 0; $i < strlen($data); $i += 2) {
             // Unpack 16-bit signed little-endian sample
-            $sample = unpack('v', substr($data, $i, 2))[1];
+            $raw = unpack('v', substr($data, $i, 2));
+            if ($raw === false) {
+                throw new InvalidArgumentException("Invalid audio sample data");
+            }
+            $sample = (int) $raw[1];
             // Convert unsigned 16-bit to signed
             if ($sample >= 32768) {
                 $sample -= 65536;
             }
-            $rms += $sample * $sample; // Accumulate squared samples
+            $rms += (float) ($sample * $sample); // Accumulate squared samples
         }
 
         // Calculate RMS (Root Mean Square)
-        $rms = sqrt($rms / ($samples * self::MAX_SAMPLE_VALUE * self::MAX_SAMPLE_VALUE));
+        $rms = sqrt($rms / ((float) ($samples * self::MAX_SAMPLE_VALUE * self::MAX_SAMPLE_VALUE)));
 
         // Convert RMS to dBov
         if ($rms > 0) {
-            $db = 20 * log10($rms);
+            $db = 20.0 * log10($rms);
             $db = max($db, self::MIN_AUDIO_LEVEL); // Clamp to minimum level
             $db = min($db, self::MAX_AUDIO_LEVEL); // Clamp to maximum level
         } else {
@@ -272,7 +298,11 @@ final class RtpUtility
         $packet = new RtpPacket;
         $packet->setPayloadType($payloadType);
         $packet->setMarker($rtx->getMarker());
-        $packet->setSequenceNumber(unpack("n", substr($rtx->getPayload(), 0, 2))[1]);
+        $rtxSequence = unpack("n", substr($rtx->getPayload(), 0, 2));
+        if ($rtxSequence === false) {
+            throw new InvalidArgumentException("Invalid RTX payload for sequence number");
+        }
+        $packet->setSequenceNumber((int) $rtxSequence[1]);
         $packet->setTimestamp($rtx->getTimestamp());
         $packet->setSsrc($ssrc);
         $packet->setPayload(substr($rtx->getPayload(), 2));

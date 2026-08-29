@@ -1,6 +1,6 @@
 <?php
 
-/**
+/*final *
  * This file is part of the PHP WebRTC package.
  *
  * (c) Amin Yazdanpanah <https://www.aminyazdanpanah.com/#contact>
@@ -11,9 +11,12 @@
 
 namespace Webrtc\RTP\Sender;
 
-readonly class RTCEncodedFrame
+final readonly class RTCEncodedFrame
 {
     public function __construct(
+        /**
+         * @var string[]
+         */
         private array $payloads,
         private int   $timestamp,
         private ?int   $audioLevel

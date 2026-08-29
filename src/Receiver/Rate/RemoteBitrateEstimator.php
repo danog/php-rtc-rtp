@@ -23,7 +23,7 @@ final class RemoteBitrateEstimator
     /** abs-send-time estimator */
     private const INTER_ARRIVAL_SHIFT = 26;
     private const TIMESTAMP_GROUP_LENGTH_MS = 5;
-    private const TIMESTAMP_TO_MS = 1000.0 / (1 << self::INTER_ARRIVAL_SHIFT);
+    private const TIMESTAMP_TO_MS = 1000.0 / (float) (1 << self::INTER_ARRIVAL_SHIFT);
     private RateCounter $incomingBitrate;
     private bool $incomingBitrateInitialized = true;
     private InterArrival $interArrival;
@@ -107,10 +107,8 @@ final class RemoteBitrateEstimator
      * @param int $arrivalTimeMs The timestamp of the packet arrival in milliseconds.
      * @param int $absSendTime The absolute send time of the packet.
      * @param int $payloadSize The size of the packet payload.
-     *
-     * @return object|null The calculated inter-arrival deltas or null if not calculable.
      */
-    private function computeInterArrivalDeltas(int $arrivalTimeMs, int $absSendTime, int $payloadSize): ?InterArrivalDelta
+    private function computeInterArrivalDeltas(int $arrivalTimeMs, int $absSendTime, int $payloadSize): InterArrivalDelta|null
     {
         $timestamp = $absSendTime << 8;
         return $this->interArrival->computeDeltas($timestamp, $arrivalTimeMs, $payloadSize);
@@ -125,7 +123,7 @@ final class RemoteBitrateEstimator
     private function processInterArrivalDeltas(?InterArrivalDelta $deltas, int $arrivalTimeMs): void
     {
         if ($deltas !== null) {
-            $timestampDeltaMs = $deltas->timestamp * self::TIMESTAMP_TO_MS;
+            $timestampDeltaMs = (float) $deltas->timestamp * (float) self::TIMESTAMP_TO_MS;
             $this->estimator->update(
                 $deltas->arrivalTime,
                 $timestampDeltaMs,

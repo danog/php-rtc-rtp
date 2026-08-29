@@ -56,17 +56,19 @@ final class InterArrival
         } elseif ($this->packetOutOfOrder($timestamp)) {
             return null;
         } elseif ($this->newTimestampGroup($timestamp, $arrivalTime)) {
-            if ($this->previousGroup !== null) {
+            $currentGroup = $this->currentGroup;
+            $previousGroup = $this->previousGroup;
+            if ($previousGroup !== null) {
                 $deltas = new InterArrivalDelta(
-                    $this->uint32Add($this->currentGroup->lastTimestamp, -$this->previousGroup->lastTimestamp),
-                    $this->currentGroup->arrivalTime - $this->previousGroup->arrivalTime,
-                    $this->currentGroup->size - $this->previousGroup->size
+                    $this->uint32Add((int) $currentGroup->lastTimestamp, -(int) $previousGroup->lastTimestamp),
+                    (int) $currentGroup->arrivalTime - (int) $previousGroup->arrivalTime,
+                    $currentGroup->size - $previousGroup->size
                 );
             }
 
             $this->previousGroup = $this->currentGroup;
             $this->currentGroup = new TimestampGroup($timestamp);
-        } elseif ($this->uint32Gt($timestamp, $this->currentGroup->lastTimestamp)) {
+        } elseif ($this->uint32Gt($timestamp, (int) $this->currentGroup->lastTimestamp)) {
             $this->currentGroup->lastTimestamp = $timestamp;
         }
 
@@ -84,11 +86,15 @@ final class InterArrival
      */
     private function belongsToBurst(int $timestamp, int $arrivalTime): bool
     {
-        $timestampDelta = $this->uint32Add($timestamp, -$this->currentGroup->lastTimestamp);
-        $timestampDeltaMs = round($this->timestampToMs * $timestampDelta);
-        $arrivalTimeDelta = $arrivalTime - $this->currentGroup->arrivalTime;
+        $currentGroup = $this->currentGroup;
+        if ($currentGroup === null) {
+            return false;
+        }
+        $timestampDelta = $this->uint32Add($timestamp, -(int) $currentGroup->lastTimestamp);
+        $timestampDeltaMs = round($this->timestampToMs * (float) $timestampDelta);
+        $arrivalTimeDelta = $arrivalTime - (int) $currentGroup->arrivalTime;
         return $timestampDeltaMs == 0 ||
-            (($arrivalTimeDelta - $timestampDeltaMs) < 0 && $arrivalTimeDelta <= self::BURST_DELTA_THRESHOLD_MS);
+            (((float) $arrivalTimeDelta - $timestampDeltaMs) < 0 && $arrivalTimeDelta <= self::BURST_DELTA_THRESHOLD_MS);
     }
 
     /**
@@ -102,7 +108,11 @@ final class InterArrival
         if ($this->belongsToBurst($timestamp, $arrivalTime)) {
             return false;
         }
-        $timestampDelta = $this->uint32Add($timestamp, -$this->currentGroup->firstTimestamp);
+        $currentGroup = $this->currentGroup;
+        if ($currentGroup === null) {
+            return false;
+        }
+        $timestampDelta = $this->uint32Add($timestamp, -(int) $currentGroup->firstTimestamp);
         return $timestampDelta > $this->groupLength;
     }
 
@@ -113,7 +123,11 @@ final class InterArrival
      */
     private function packetOutOfOrder(int $timestamp): bool
     {
-        $timestampDelta = $this->uint32Add($timestamp, -$this->currentGroup->firstTimestamp);
+        $currentGroup = $this->currentGroup;
+        if ($currentGroup === null) {
+            return false;
+        }
+        $timestampDelta = $this->uint32Add($timestamp, -(int) $currentGroup->firstTimestamp);
         return $timestampDelta >= 0x80000000;
     }
 

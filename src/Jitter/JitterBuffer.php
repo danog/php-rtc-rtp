@@ -119,6 +119,10 @@ final class JitterBuffer
      */
     private function extractFrame(): ?JitterFrame
     {
+        $origin = $this->origin;
+        if ($origin === null) {
+            return null;
+        }
         $packets = [];
         $frame = null;
         $framesCount = 0;
@@ -126,7 +130,7 @@ final class JitterBuffer
         $timestamp = null;
 
         for ($count = 0; $count < $this->capacity; $count++) {
-            $pos = ($this->origin + $count) % $this->capacity;
+            $pos = ($origin + $count) % $this->capacity;
             $packet = $this->packets[$pos] ?? null;
 
             if ($packet === null) {
@@ -173,6 +177,10 @@ final class JitterBuffer
             throw new InvalidArgumentException("Count cannot exceed buffer capacity.");
         }
 
+        if ($this->origin === null) {
+            return;
+        }
+
         for ($i = 0; $i < $count; $i++) {
             $pos = $this->origin % $this->capacity;
             $this->packets[$pos] = null;
@@ -190,6 +198,9 @@ final class JitterBuffer
      */
     public function smartRemove(int $count): bool
     {
+        if ($this->origin === null) {
+            return false;
+        }
         $timestamp = null;
 
         for ($i = 0; $i < $this->capacity; $i++) {

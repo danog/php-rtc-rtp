@@ -44,11 +44,11 @@ final class OveruseDetector {
             return BandwidthUsage::NORMAL;
         }
 
-        $T = min($numOfDeltas, self::MIN_NUM_DELTAS) * $offset;
+        $T = (float) min($numOfDeltas, self::MIN_NUM_DELTAS) * $offset;
 
         if ($T > $this->threshold) {
             if ($this->overuseTime === null) {
-                $this->overuseTime = $timestampDeltaMs / 2;
+                $this->overuseTime = $timestampDeltaMs / 2.0;
             } else {
                 $this->overuseTime += $timestampDeltaMs;
             }
@@ -96,14 +96,14 @@ final class OveruseDetector {
             $this->lastUpdateMs = $nowMs;
         }
 
-        if (abs($modifiedOffset) > $this->threshold + self::MAX_ADAPT_OFFSET_MS) {
+        if (abs($modifiedOffset) > $this->threshold + (float) self::MAX_ADAPT_OFFSET_MS) {
             $this->lastUpdateMs = $nowMs;
             return;
         }
 
         $k = abs($modifiedOffset) < $this->threshold ? $this->kDown : $this->kUp;
         $timeDeltaMs = min($nowMs - $this->lastUpdateMs, 100);
-        $this->threshold += $k * (abs($modifiedOffset) - $this->threshold) * $timeDeltaMs;
+        $this->threshold += $k * (abs($modifiedOffset) - $this->threshold) * (float) $timeDeltaMs;
         $this->threshold = max(6, min($this->threshold, 600));
         $this->lastUpdateMs = $nowMs;
     }

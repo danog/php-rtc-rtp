@@ -46,7 +46,6 @@ use Webrtc\RTP\RtpPacket;
 use Webrtc\RTP\RtpUtility;
 use Webrtc\RTPParameter\RTCRtpCodecParameters;
 use Webrtc\RTPParameter\RTCRtpSendParameters;
-use Webrtc\Srtp\Exception\SrtpException;
 use Webrtc\Stats\enum\StatType;
 use Webrtc\Stats\enum\TLSState;
 use Webrtc\Stats\RTCOutboundRtpStreamStats;
@@ -198,6 +197,8 @@ final class RTCRtpSender implements RtpSenderInterface
         $this->streamId = Uuid::uuid4()->toString();
         $this->stats = new RTCStatsReport();
         $this->headerExtensionsMap = new HeaderExtensionsMap();
+        $this->codec = new RTCRtpCodecParameters("", 0);
+        $this->rtcpTask = "";
     }
 
     /**
@@ -257,15 +258,14 @@ final class RTCRtpSender implements RtpSenderInterface
      * @param RTCRtpSendParameters $parameters The parameters for sending media
      * @throws RandomException If random number generation fails
      */
+    #[\Override]
     public function start(RTCRtpSendParameters $parameters): void
     {
-        if ($this->started) {
-            return;
-        }
-
         $this->cname = $parameters->rtcp->cname;
         $this->mid = $parameters->muxId;
         $this->codec = $parameters->codecs[0];
+        $this->encoder = null;
+        $this->rtxPayloadType = null;
         $this->transport->setRtpSender($this, $parameters);
         $this->headerExtensionsMap->configure($parameters);
 
@@ -274,6 +274,13 @@ final class RTCRtpSender implements RtpSenderInterface
                 $this->rtxPayloadType = $codec->payloadType;
                 break;
             }
+        }
+
+        // A connected transceiver may be negotiated again with another codec or payload type.
+        // Keep the running RTP task, but make every packet after this point use the new parameters.
+        if ($this->started) {
+            $this->logger?->debug(" RTP Sender reconfigured");
+            return;
         }
 
         // Start RTP and RTCP tasks
@@ -285,9 +292,8 @@ final class RTCRtpSender implements RtpSenderInterface
 
     /**
      * Shuts down RTP and RTCP tasks.
-     *
-     * @throws SrtpException If there's an error with SRTP processing
      */
+    #[\Override]
     public function stop(): void
     {
         if (!$this->started) {
@@ -303,8 +309,6 @@ final class RTCRtpSender implements RtpSenderInterface
 
     /**
      * Stops the RTCP task and sends a BYE packet.
-     *
-     * @throws SrtpException If there's an error with SRTP processing
      */
     private function stopRtcpTask(): void
     {
@@ -350,11 +354,11 @@ final class RTCRtpSender implements RtpSenderInterface
                 return;
             }
             foreach ($track->getConsumer() as $data) {
-                // The sender may be stopped (or its track detached) while iterating: bail out
-                // immediately instead of pushing more media onto the wire. The captured track
-                // reference stays valid, but stop() completes its consumer so the loop would
-                // also end cleanly on its own.
-                if ($this->track === null || !$this->started) {
+                // The sender may have its track detached while iterating: bail out
+                // immediately instead of pushing more media onto the wire. The captured
+                // track reference stays valid, but stop() completes its consumer so the
+                // loop would also end cleanly on its own.
+                if ($this->track === null) {
                     break;
                 }
                 // While the sender is paused (e.g. the transceiver direction dropped the
@@ -376,13 +380,23 @@ final class RTCRtpSender implements RtpSenderInterface
                     $useKeyFrame = $this->useKeyframe;
                     $this->useKeyframe = false;
                     $this->encoder ??= Codec::getEncoder($this->codec);
-                    [$payloads, $timestamp] = $this->encoder->encode($data, $useKeyFrame);
+                    $encoded = $this->encoder->encode($data, $useKeyFrame);
+                    if (\is_string($encoded)) {
+                        throw new InvalidArgumentException("Encoder returned a raw string instead of a payload list");
+                    }
+                    /** @var array{0: string[], 1: int} $encoded */
+                    [$payloads, $timestamp] = $encoded;
                 } else {
                     // pack() handles both EncodedPacket and AVCodec Packet: pre-encoded frames are
                     // passed straight through (still packetized for video), while raw packets have
                     // their timebase converted to the codec's RTP clock.
                     $this->encoder ??= Codec::getEncoder($this->codec);
-                    [$payloads, $timestamp] = $this->encoder->pack($data);
+                    $encoded = $this->encoder->pack($data);
+                    if (\is_string($encoded)) {
+                        throw new InvalidArgumentException("Encoder returned a raw string instead of a payload list");
+                    }
+                    /** @var array{0: string[], 1: int} $encoded */
+                    [$payloads, $timestamp] = $encoded;
                 }
 
                 if (empty($payloads)) {
@@ -411,6 +425,9 @@ final class RTCRtpSender implements RtpSenderInterface
     private function generateRtpPacket(RTCEncodedFrame $encodedFrame, int $i): RtpPacket
     {
         $packet = new RtpPacket();
+        if ($this->codec->payloadType === null) {
+            throw new InvalidArgumentException("Cannot generate RTP packet: codec has no payload type");
+        }
         $packet->setPayloadType($this->codec->payloadType);
         $packet->setSequenceNumber($this->sequenceNumber);
         $packet->setTimestamp(($this->orgTimestamp + $encodedFrame->getTimestamp()) & 0xFFFFFFFF);
@@ -420,10 +437,11 @@ final class RTCRtpSender implements RtpSenderInterface
 
         // Set header extensions
         [$ntpTimeHi, $ntpTimeLo] = NetworkTimeProtocol::currentNtpTime();
+        $ntpTimeLo = (int) $ntpTimeLo;
         // abs-send-time is a 6.18 fixed point value: bits 14..37 of the raw NTP timestamp.
         $packet->getExtensions()->setAbsSendTime((($ntpTimeLo >> 14) & 0x00FFFFFF));
         $packet->getExtensions()->setMid($this->mid);
-        if ($encodedFrame->getAudioLevel()) {
+        if ($encodedFrame->getAudioLevel() !== null) {
             // RFC 6464 carries the loudness as 0..127 in -dBov, 0 being the loudest. Clamp rather
             // than let an out of range value wrap into a nonsensical one.
             $level = min(127, max(0, -$encodedFrame->getAudioLevel()));
@@ -475,7 +493,7 @@ final class RTCRtpSender implements RtpSenderInterface
     {
         $this->logger?->debug("RTCP started");
 
-        $this->rtcpTask = EventLoop::repeat(0.5 + (random_int(0, 1000) / 1000), function () {
+        $this->rtcpTask = EventLoop::repeat(0.5 + ((float) random_int(0, 1000) / 1000.0), function () {
             try {
                 $rtcpPackets = $this->generateRtcpPackets();
                 $this->sendRtcpPacket($rtcpPackets);
@@ -565,7 +583,6 @@ final class RTCRtpSender implements RtpSenderInterface
      *
      * @param RtcpPacketInterface $packet The received RTCP packet
      * @throws Throwable If there's an error with DTLS
-     * @throws SrtpException If there's an error with SRTP
      */
     public function handleRtcpPacket(RtcpPacketInterface $packet): void
     {
@@ -590,24 +607,30 @@ final class RTCRtpSender implements RtpSenderInterface
     private function handleReportRtcpPacket(RtcpSrPacket|RtcpRrPacket $packet): void
     {
         foreach ($packet->getReports() as $report) {
-            if ($report->getSsrc() === $this->ssrc && $report->getDlsr() !== null) {
-                // Estimate round-trip time
-                $rtt = microtime(true) - $this->lsrTime - ($report->getDlsr() / 65536);
-                $this->rtt = $this->rtt === null ? $rtt : self::RTT_ALPHA * $this->rtt + (1 - self::RTT_ALPHA) * $rtt;
-
-                // Update statistics
-                $this->stats->add(new RTCRemoteInboundRtpStreamStats(
-                    id: "remote_inbound_rtp_stream_" . spl_object_id($this),
-                    ssrc: $packet->getSsrc(),
-                    kind: $this->kind->value,
-                    transportId: $this->transport->getReportTransport()->id,
-                    packetsReceived: $this->packetCount - $report->getPacketsLost(),
-                    packetsLost: $report->getPacketsLost(),
-                    jitter: $report->getJitter(),
-                    roundTripTime: $this->rtt,
-                    fractionLost: $report->getFractionLost()
-                ));
+            if ($report->getSsrc() !== $this->ssrc) {
+                continue;
             }
+
+            // Only the round-trip time requires a locally-sent SR for the LSR reference; the
+            // remote-inbound statistics are recorded regardless of whether that reference exists.
+            if ($this->lsrTime !== null) {
+                // Estimate round-trip time
+                $rtt = microtime(true) - $this->lsrTime - ((float) $report->getDlsr() / 65536.0);
+                $this->rtt = $this->rtt === null ? $rtt : self::RTT_ALPHA * $this->rtt + (1.0 - self::RTT_ALPHA) * $rtt;
+            }
+
+            // Update statistics
+            $this->stats->add(new RTCRemoteInboundRtpStreamStats(
+                id: "remote_inbound_rtp_stream_" . spl_object_id($this),
+                ssrc: $packet->getSsrc(),
+                kind: $this->kind->value,
+                transportId: $this->transport->getReportTransport()->id,
+                packetsReceived: $this->packetCount - $report->getPacketsLost(),
+                packetsLost: $report->getPacketsLost(),
+                jitter: $report->getJitter(),
+                roundTripTime: $this->rtt ?? 0.0,
+                fractionLost: (float) $report->getFractionLost()
+            ));
         }
     }
 
@@ -616,7 +639,6 @@ final class RTCRtpSender implements RtpSenderInterface
      *
      * @param int $sequenceNumber The sequence number of the packet to retransmit
      * @throws RandomException
-     * @throws SrtpException
      * @throws Throwable
      */
     public function retransmit(int $sequenceNumber): void
@@ -705,9 +727,10 @@ final class RTCRtpSender implements RtpSenderInterface
      */
     public function setLogger(?LoggerInterface $logger): void
     {
-        $logger = new class((string) $this->kind, $logger) extends \Psr\Log\AbstractLogger {
-            public function __construct(private readonly string $kind, private readonly LoggerInterface $logger) {}
-            public function log($level, $message, array $context = array()): void {
+        $logger = new class($this->kind->value, $logger) extends \Psr\Log\AbstractLogger {
+            public function __construct(private readonly string $kind, private readonly ?LoggerInterface $logger) {}
+            #[\Override]
+            public function log(mixed $level, string|\Stringable $message, array $context = array()): void {
                 assert(is_string($message));
                 $this->logger?->log($level, "RTCRtpSender($this->kind): $message", $context);
             }
@@ -777,7 +800,6 @@ final class RTCRtpSender implements RtpSenderInterface
 
     /**
      * Destructor - stops the sender when the object is destroyed.
-     * @throws SrtpException
      */
     public function __destruct()
     {
@@ -856,7 +878,10 @@ final class RTCRtpSender implements RtpSenderInterface
     {
         $bytes = random_bytes(2);
         $unpacked = unpack('n', $bytes);
+        if ($unpacked === false) {
+            throw new InvalidArgumentException("Failed to unpack sequence number");
+        }
 
-        return $unpacked[1] % 32768;
+        return (int) $unpacked[1] % 32768;
     }
 }

@@ -19,20 +19,22 @@ final class JitterFrame implements JitterFrameInterface
 {
     /**
      * @param string $data Raw data to decode
-     * @param int|null $timestamp The time of receiving data
+     * @param int $timestamp The time of receiving data
      */
     public function __construct(
         private string $data,
-        private ?int   $timestamp = null
+        private int    $timestamp = 0
     )
     {
     }
 
+    #[\Override]
     public function getData(): string
     {
         return $this->data;
     }
 
+    #[\Override]
     public function getTimestamp(): int
     {
         return $this->timestamp;
