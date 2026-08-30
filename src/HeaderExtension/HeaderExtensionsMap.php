@@ -92,28 +92,24 @@ final class HeaderExtensionsMap
                     break;
                 case $this->ids->getAbsSendTime():
                     $absSendTime = unpack("N", "\x00" . $xValue);
-                    if ($absSendTime !== false) {
-                        $headerExtensions->setAbsSendTime((int) $absSendTime[1]);
-                    }
+                    assert($absSendTime !== false);
+                    $headerExtensions->setAbsSendTime((int) $absSendTime[1]);
                     break;
                 case $this->ids->getTransmissionOffset():
                     $transmissionOffset = unpack("N", $xValue . "\x00");
-                    if ($transmissionOffset !== false) {
-                        $headerExtensions->setTransmissionOffset(((int) $transmissionOffset[1]) >> 8);
-                    }
+                    assert($transmissionOffset !== false);
+                    $headerExtensions->setTransmissionOffset(((int) $transmissionOffset[1]) >> 8);
                     break;
                 case $this->ids->getAudioLevel():
                     $vadLevel = unpack("C", $xValue);
-                    if ($vadLevel !== false) {
-                        $level = (int) $vadLevel[1];
-                        $headerExtensions->setAudioLevel([(bool)($level & 0x80), $level & 0x7F]);
-                    }
+                    assert($vadLevel !== false);
+                    $level = (int) $vadLevel[1];
+                    $headerExtensions->setAudioLevel([(bool)($level & 0x80), $level & 0x7F]);
                     break;
                 case $this->ids->getTransportSequenceNumber():
                     $transportSeq = unpack("n", $xValue);
-                    if ($transportSeq !== false) {
-                        $headerExtensions->setTransportSequenceNumber((int) $transportSeq[1]);
-                    }
+                    assert($transportSeq !== false);
+                    $headerExtensions->setTransportSequenceNumber((int) $transportSeq[1]);
                     break;
             }
         }
