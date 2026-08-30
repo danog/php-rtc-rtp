@@ -5,8 +5,6 @@ namespace Tests\Webrtc\RTP;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
-use Webrtc\AVCodec\AVCodec;
-use Webrtc\AVCodec\Frame\AudioFrame;
 use Webrtc\Exception\InvalidArgumentException;
 use Webrtc\RTP\HeaderExtension\HeaderExtensions;
 use Webrtc\RTP\HeaderExtension\HeaderExtensionsMap;
@@ -18,19 +16,6 @@ use Webrtc\RTPParameter\RTCRtpParameters;
 #[UsesClass(HeaderExtensions::class)]
 #[UsesClass(HeaderExtensionsMap::class)]
 #[UsesClass(RtpPacket::class)]
-#[UsesClass(\Webrtc\AVCodec\AVCodec::class)]
-#[UsesClass(\Webrtc\AVCodec\AVFilter::class)]
-#[UsesClass(\Webrtc\AVCodec\AVFormat::class)]
-#[UsesClass(\Webrtc\AVCodec\LibraryVersion::class)]
-#[UsesClass(\Webrtc\AVCodec\Audio\AudioLayout::class)]
-#[UsesClass(\Webrtc\AVCodec\Data\AudioPlane::class)]
-#[UsesClass(\Webrtc\AVCodec\Data\Buffer::class)]
-#[UsesClass(\Webrtc\AVCodec\Format\AudioFormat::class)]
-#[UsesClass(\Webrtc\AVCodec\Frame\AudioFrame::class)]
-#[UsesClass(\Webrtc\AVCodec\Frame\Frame::class)]
-#[UsesClass(\Webrtc\RTPParameter\RTCRtcpParameters::class)]
-#[UsesClass(\Webrtc\RTPParameter\RTCRtpHeaderExtensionParameters::class)]
-#[UsesClass(\Webrtc\RTPParameter\RTCRtpParameters::class)]
 #[CoversClass(RtpUtility::class)]
 class RTPUtilityTest extends TestCase
 {
@@ -175,54 +160,40 @@ class RTPUtilityTest extends TestCase
 
     public function testComputeAudioLevelDbov()
     {
-        if (!AVCodec::isAvailable()) {
-            self::markTestSkipped(
-                'Transcoding needs the FFI extension and an FFmpeg build matching the bundled headers.'
-            );
-        }
-
-        self::assertFalse(false);
-        AVCodec::init();
         $numSamples = 960; // 20ms @ 48kHz
 
-        // FIXME
-        // Test a frame of all zeroes (-9 dBov, the minimum value)
-//        $silentFrame = $this->createAudioFrame(function ($n) {
-//            return 0.0;
-//        }, $numSamples, 0);
-//        $this->assertEquals(0, RtpUtility::computeAudioLevelDbov($silentFrame->getPlanes()[0]->getData(), $numSamples));
+        // Test a frame of all zeroes (-127 dBov, the minimum value)
+        $silentFrame = $this->createPcmFrame(function ($n) {
+            return 0;
+        }, $numSamples);
+        $this->assertEquals(-127, RtpUtility::computeAudioLevelDbov($silentFrame, $numSamples));
 
         // Test a 50Hz square wave (0 dBov, the maximum value)
-        $squareFrame = $this->createAudioFrame(function ($n) use ($numSamples) {
+        $squareFrame = $this->createPcmFrame(function ($n) use ($numSamples) {
             return $n < $numSamples / 2 ? 1.0 : -1.0;
-        }, $numSamples, 0);
-        $this->assertEquals(0, RtpUtility::computeAudioLevelDbov($squareFrame->getPlanes()[0]->getData(), $numSamples));
+        }, $numSamples);
+        $this->assertEquals(0, RtpUtility::computeAudioLevelDbov($squareFrame, $numSamples));
 
-        // Test a 50Hz sine wave (-3 dBov, the maximum value for a sine wave)
-//        $sineFrame = $this->createAudioFrame(function ($n) use ($numSamples) {
-//            return sin(2 * M_PI * $n / $numSamples);
-//        }, $numSamples, 0);
-//        $this->assertEquals(-3, RtpUtility::computeAudioLevelDbov($sineFrame->getPlanes()[0]->getData(), $numSamples));
+        // Test a 50Hz sine wave (-3.01 dBov, the maximum value for a sine wave)
+        $sineFrame = $this->createPcmFrame(function ($n) use ($numSamples) {
+            return sin(2 * M_PI * $n / $numSamples);
+        }, $numSamples);
+        $this->assertEquals(-3, RtpUtility::computeAudioLevelDbov($sineFrame, $numSamples));
     }
 
-    function createAudioFrame($sample_func, $samples, $pts, $layout = "mono", $sampleRate = 48000): AudioFrame
+    /**
+     * Builds a raw signed 16-bit little-endian PCM buffer from a sample function.
+     *
+     * @param callable(int):float $sampleFunc
+     */
+    function createPcmFrame($sampleFunc, $samples): string
     {
-        $frame = new AudioFrame(layout: $layout, samples: $sampleRate);
-
-        foreach ($frame->getPlanes() as $p) {
-            $buf = '';
-            for ($i = 0; $i < $samples; $i++) {
-                $sample = (int)($sample_func($i) * 32767);
-                $buf .= pack('s', $sample); // packing as signed 16-bit integer
-            }
-            $p->putData($buf);
+        $buf = '';
+        for ($i = 0; $i < $samples; $i++) {
+            $buf .= pack('s', (int)($sampleFunc($i) * 32767));
         }
 
-        $frame->setPts($pts);
-        $frame->setSampleRate($sampleRate);
-        $frame->setTimeBase(1, $sampleRate);
-
-        return $frame;
+        return $buf;
     }
 
 }

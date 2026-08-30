@@ -22,13 +22,6 @@ use Webrtc\RTP\Sender\RTCRtpSender;
 
 #[UsesClass(RtpUtility::class)]
 #[UsesClass(RtpPacket::class)]
-#[UsesClass(\Webrtc\RTCP\RtcpByePacket::class)]
-#[UsesClass(\Webrtc\RTCP\RtcpPsfbPacket::class)]
-#[UsesClass(\Webrtc\RTCP\RtcpReceiverInfo::class)]
-#[UsesClass(\Webrtc\RTCP\RtcpRrPacket::class)]
-#[UsesClass(\Webrtc\RTCP\RtcpRtpfbPacket::class)]
-#[UsesClass(\Webrtc\RTCP\RtcpSenderInfo::class)]
-#[UsesClass(\Webrtc\RTCP\RtcpSrPacket::class)]
 #[UsesClass(\Webrtc\RTP\Sender\RTCRtpSender::class)]
 #[CoversClass(RtpRouter::class)]
 class RtpRouterTest extends TestCase

@@ -23,7 +23,7 @@ final class RemoteBitrateEstimator
     /** abs-send-time estimator */
     private const INTER_ARRIVAL_SHIFT = 26;
     private const TIMESTAMP_GROUP_LENGTH_MS = 5;
-    private const TIMESTAMP_TO_MS = 1000.0 / (float) (1 << self::INTER_ARRIVAL_SHIFT);
+    private float $timestampToMs;
     private RateCounter $incomingBitrate;
     private bool $incomingBitrateInitialized = true;
     private InterArrival $interArrival;
@@ -39,8 +39,9 @@ final class RemoteBitrateEstimator
      */
     public function __construct()
     {
+        $this->timestampToMs = 1000.0 / (float) (1 << self::INTER_ARRIVAL_SHIFT);
         $this->incomingBitrate = new RateCounter(1000, 8000);
-        $this->interArrival = new InterArrival(intval((self::TIMESTAMP_GROUP_LENGTH_MS << self::INTER_ARRIVAL_SHIFT) / 1000), self::TIMESTAMP_TO_MS);
+        $this->interArrival = new InterArrival(intval((self::TIMESTAMP_GROUP_LENGTH_MS << self::INTER_ARRIVAL_SHIFT) / 1000), $this->timestampToMs);
         $this->estimator = new OveruseEstimator();
         $this->detector = new OveruseDetector();
         $this->rateControl = new AimdRateControl();
@@ -123,7 +124,7 @@ final class RemoteBitrateEstimator
     private function processInterArrivalDeltas(?InterArrivalDelta $deltas, int $arrivalTimeMs): void
     {
         if ($deltas !== null) {
-            $timestampDeltaMs = (float) $deltas->timestamp * (float) self::TIMESTAMP_TO_MS;
+            $timestampDeltaMs = (float) $deltas->timestamp * $this->timestampToMs;
             $this->estimator->update(
                 $deltas->arrivalTime,
                 $timestampDeltaMs,
