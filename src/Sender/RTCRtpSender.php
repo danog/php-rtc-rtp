@@ -518,7 +518,7 @@ final class RTCRtpSender implements RtpSenderInterface
 
         // Generate RTCP SDES packet
         if ($this->cname !== null) {
-            $packets[] = $this->generateRtcpSdesPacket();
+            $packets[] = $this->generateRtcpSdesPacket($this->cname);
         }
 
         return $packets;
@@ -546,14 +546,15 @@ final class RTCRtpSender implements RtpSenderInterface
     /**
      * Generates an RTCP source description (SDES) packet.
      *
+     * @param string $cname The canonical name (CNAME) to advertise in the SDES item
      * @return RtcpSdesPacket The generated SDES packet
      */
-    private function generateRtcpSdesPacket(): RtcpSdesPacket
+    private function generateRtcpSdesPacket(string $cname): RtcpSdesPacket
     {
         return new RtcpSdesPacket([
             new RtcpSourceInfo(
                 ssrc: $this->ssrc,
-                items: [[1, $this->cname]]
+                items: [[1, $cname]]
             )
         ]);
     }
