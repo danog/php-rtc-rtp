@@ -768,8 +768,11 @@ final class RTCRtpReceiver implements RtpReceiverInterface
     public function __unserialize(array $data): void
     {
         $restartRtcp = false;
+        /**
+         * @var mixed $value
+         */
         foreach ($data as $key => $value) {
-            if (is_string($key) && str_ends_with($key, "\0rtcpTask")) {
+            if (str_ends_with($key, "\0rtcpTask")) {
                 $restartRtcp = $value === true;
                 $data[$key] = '';
             }

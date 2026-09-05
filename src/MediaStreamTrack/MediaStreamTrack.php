@@ -147,8 +147,8 @@ abstract class MediaStreamTrack extends EventEmitter
      */
     public function __unserialize(array $data): void
     {
-        foreach ($data as $key => $value) {
-            if (is_string($key) && str_ends_with($key, "\0frameQueue")) {
+        foreach (array_keys($data) as $key) {
+            if (str_ends_with($key, "\0frameQueue")) {
                 unset($data[$key]);
             }
         }

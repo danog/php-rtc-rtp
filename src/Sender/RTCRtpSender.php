@@ -909,12 +909,15 @@ final class RTCRtpSender implements RtpSenderInterface
     public function __unserialize(array $data): void
     {
         $restartRtcp = false;
+        /**
+         * @var mixed $value
+         */
         foreach ($data as $key => $value) {
-            if (is_string($key) && str_ends_with($key, "\0rtcpTask")) {
+            if (str_ends_with($key, "\0rtcpTask")) {
                 $restartRtcp = $value === true;
                 $data[$key] = '';
             }
-            if (is_string($key) && str_ends_with($key, "\0encoder")) {
+            if (str_ends_with($key, "\0encoder")) {
                 unset($data[$key]);
             }
         }

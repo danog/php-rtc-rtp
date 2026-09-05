@@ -113,8 +113,8 @@ final class DecoderQueue
      */
     public function __unserialize(array $data): void
     {
-        foreach ($data as $key => $value) {
-            if (is_string($key) && str_ends_with($key, "\0queue")) {
+        foreach (array_keys($data) as $key) {
+            if (str_ends_with($key, "\0queue")) {
                 unset($data[$key]);
             }
         }
