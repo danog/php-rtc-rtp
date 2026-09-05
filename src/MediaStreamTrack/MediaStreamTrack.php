@@ -18,6 +18,7 @@ use Evenement\EventEmitter;
 use Ramsey\Uuid\Uuid;
 use Webrtc\Codecs\EncodedPacket;
 use Webrtc\AVCodec\Frame\FrameInterface;
+use Webrtc\Mixin\SerializableState;
 use Webrtc\RTP\Enum\MediaKind;
 
 /**
@@ -129,5 +130,30 @@ abstract class MediaStreamTrack extends EventEmitter
      */
     final public function getConsumer(): ConcurrentIterator {
         return $this->frameQueue->iterate();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function __serialize(): array
+    {
+        return SerializableState::export($this, [
+            'frameQueue' => null,
+        ]);
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    public function __unserialize(array $data): void
+    {
+        foreach ($data as $key => $value) {
+            if (is_string($key) && str_ends_with($key, "\0frameQueue")) {
+                unset($data[$key]);
+            }
+        }
+        SerializableState::import($this, $data);
+        /** @var Queue<FrameInterface|EncodedPacket> */
+        $this->frameQueue = new Queue();
     }
 }

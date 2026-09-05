@@ -25,6 +25,7 @@ use Webrtc\Codecs\EncodedPacket;
 use Webrtc\Codecs\CodecUtility;
 use Webrtc\Codecs\EncoderInterface;
 use Webrtc\Exception\InvalidArgumentException;
+use Webrtc\Mixin\SerializableState;
 use Webrtc\NTP\NetworkTimeProtocol;
 use Webrtc\RTCP\Exception\RtcpExceptionInterface;
 use Webrtc\RTCP\RtcpByePacket;
@@ -347,7 +348,14 @@ final class RTCRtpSender implements RtpSenderInterface
             throw new InvalidArgumentException("Cannot start the RTP task without a media track");
         }
 
-        EventLoop::queue(function () {
+        EventLoop::queue($this->drainRtp(...));
+    }
+
+    /**
+     * Drain the track onto the wire. Public so unserialize can restart it.
+     */
+    public function drainRtp(): void
+    {
             // Capture the track once. The sender may be stopped (or its track detached)
             // between queueing and execution, in which case there is nothing to send yet.
             $track = $this->track;
@@ -412,7 +420,6 @@ final class RTCRtpSender implements RtpSenderInterface
                     $this->sequenceNumber = ($this->sequenceNumber + 1) & 0xFFFF;
                 }
             }
-        });
     }
 
     /**
@@ -883,5 +890,42 @@ final class RTCRtpSender implements RtpSenderInterface
         }
 
         return (int) $unpacked[1] % 32768;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function __serialize(): array
+    {
+        return SerializableState::export($this, [
+            'rtcpTask' => $this->started && $this->rtcpTask !== '',
+            'encoder' => null,
+        ]);
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    public function __unserialize(array $data): void
+    {
+        $restartRtcp = false;
+        foreach ($data as $key => $value) {
+            if (is_string($key) && str_ends_with($key, "\0rtcpTask")) {
+                $restartRtcp = $value === true;
+                $data[$key] = '';
+            }
+            if (is_string($key) && str_ends_with($key, "\0encoder")) {
+                unset($data[$key]);
+            }
+        }
+        SerializableState::import($this, $data);
+        $this->rtcpTask = '';
+        $this->encoder = null;
+        if ($restartRtcp) {
+            $this->startRtcpTask();
+        }
+        if ($this->started && $this->track !== null) {
+            EventLoop::queue($this->drainRtp(...));
+        }
     }
 }

@@ -23,6 +23,7 @@ use Webrtc\Codecs\Codec;
 use Webrtc\Codecs\EncodedPacket;
 use Webrtc\Codecs\CodecUtility;
 use Webrtc\Exception\InvalidArgumentException;
+use Webrtc\Mixin\SerializableState;
 use Webrtc\NTP\NetworkTimeProtocol;
 use Webrtc\RTCP\Exception\RtcpExceptionInterface;
 use Webrtc\RTCP\RtcpByePacket;
@@ -749,5 +750,34 @@ final class RTCRtpReceiver implements RtpReceiverInterface
     public function isEnabled(): bool
     {
         return $this->enabled;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function __serialize(): array
+    {
+        return SerializableState::export($this, [
+            'rtcpTask' => $this->started && $this->rtcpTask !== '',
+        ]);
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    public function __unserialize(array $data): void
+    {
+        $restartRtcp = false;
+        foreach ($data as $key => $value) {
+            if (is_string($key) && str_ends_with($key, "\0rtcpTask")) {
+                $restartRtcp = $value === true;
+                $data[$key] = '';
+            }
+        }
+        SerializableState::import($this, $data);
+        $this->rtcpTask = '';
+        if ($restartRtcp) {
+            $this->runRtcp();
+        }
     }
 }
