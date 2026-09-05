@@ -38,7 +38,7 @@
         "danog/php-rtc-sdp": "^1.1.6",
         "ramsey/uuid": "^4.9.3",
         "amphp/pipeline": "^1.2.7",
-        "symfony/polyfill-php83": ">=1.41"
+        "symfony/polyfill-php83": "*"
     },
     "require-dev": {
         "phpunit/phpunit": "^11.5 || ^12.0 || ^13.3.2",
