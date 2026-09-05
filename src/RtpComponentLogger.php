@@ -4,7 +4,6 @@ namespace Webrtc\RTP;
 
 use Psr\Log\AbstractLogger;
 use Psr\Log\LoggerInterface;
-use Psr\Log\LogLevel;
 use Stringable;
 
 /**
@@ -22,7 +21,7 @@ final class RtpComponentLogger extends AbstractLogger
     }
 
     /**
-     * @param LogLevel::* $level
+     * @param mixed $level
      * @param array<mixed> $context
      */
     #[\Override]

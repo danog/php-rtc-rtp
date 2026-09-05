@@ -119,7 +119,9 @@ final class DecoderQueue
             }
         }
         SerializableState::import($this, $data);
-        $this->queue = new Queue();
+        /** @var Queue<JitterFrame> $queue */
+        $queue = new Queue();
+        $this->queue = $queue;
         if ($this->running && $this->track !== null) {
             $this->running = false;
             $this->start($this->track);
