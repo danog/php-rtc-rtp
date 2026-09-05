@@ -34,6 +34,7 @@ use Webrtc\RTCP\RtcpRrPacket;
 use Webrtc\RTCP\RtcpRtpfbPacket;
 use Webrtc\RTCP\RtcpSrPacket;
 use Webrtc\RTP\Enum\MediaKind;
+use Webrtc\RTP\RtpComponentLogger;
 use Webrtc\RTP\Jitter\JitterBuffer;
 use Webrtc\RTP\Jitter\JitterFrame;
 use Webrtc\RTP\MediaStreamTrack\MediaStreamTrack;
@@ -527,16 +528,22 @@ final class RTCRtpReceiver implements RtpReceiverInterface
     {
         $this->logger?->debug(" RTCP started");
 
-        $this->rtcpTask = EventLoop::repeat(0.5 + ((float) random_int(0, 1000) / 1000.0), function () {
-            try {
-                $rtcpPackets = $this->generateRtcpRrPacket();
-                if ($rtcpPackets) {
-                    $this->sendRtcp($rtcpPackets);
-                }
-            } catch (RtcpExceptionInterface $e) {
-                $this->logger?->warning(sprintf("RTCP error: %s", $e->getMessage()));
+        $this->rtcpTask = EventLoop::repeat(0.5 + ((float) random_int(0, 1000) / 1000.0), $this->onRtcpTimer(...));
+    }
+
+    /**
+     * Periodic RTCP tick. Public so the watcher can be rescheduled after unserialize.
+     */
+    public function onRtcpTimer(): void
+    {
+        try {
+            $rtcpPackets = $this->generateRtcpRrPacket();
+            if ($rtcpPackets) {
+                $this->sendRtcp($rtcpPackets);
             }
-        });
+        } catch (RtcpExceptionInterface $e) {
+            $this->logger?->warning(sprintf("RTCP error: %s", $e->getMessage()));
+        }
     }
 
     /**
@@ -599,14 +606,7 @@ final class RTCRtpReceiver implements RtpReceiverInterface
      */
     public function setLogger(LoggerInterface $logger): void
     {
-        $logger = new class($this->kind->value, $logger) extends \Psr\Log\AbstractLogger {
-            public function __construct(private readonly string $kind, private readonly LoggerInterface $logger) {}
-            #[\Override]
-            public function log(mixed $level, string|\Stringable $message, array $context = array()): void {
-                $this->logger->log($level, "RTCRtpReceiver($this->kind): " . (string) $message, $context);
-            }
-        };
-        $this->logger = $logger;
+        $this->logger = new RtpComponentLogger('RTCRtpReceiver', $this->kind->value, $logger);
     }
 
     /**
