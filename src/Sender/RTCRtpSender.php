@@ -397,7 +397,7 @@ final class RTCRtpSender implements RtpSenderInterface
     /**
      * Encode (or packetize) one frame from the track consumer and put it on the wire.
      */
-    private function sendEncodedFrame(mixed $data): void
+    private function sendEncodedFrame(FrameInterface|EncodedPacket $data): void
     {
         $audioLevel = null;
         if ($data instanceof EncodedPacket) {
