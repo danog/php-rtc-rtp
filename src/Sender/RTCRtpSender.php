@@ -352,9 +352,13 @@ final class RTCRtpSender implements RtpSenderInterface
     }
 
     /**
-     * Drain the track onto the wire. Public so unserialize can restart it.
+     * Drain the track onto the wire.
+     *
+     * Restarted only as the first-class callable `$this->drainRtp(...)` handed to
+     * EventLoop::queue(), including when unserialize re-queues it. That callable captures this
+     * method's private scope, so the event loop can run it while it stays private.
      */
-    public function drainRtp(): void
+    private function drainRtp(): void
     {
             // Capture the track once. The sender may be stopped (or its track detached)
             // between queueing and execution, in which case there is nothing to send yet.
@@ -505,9 +509,13 @@ final class RTCRtpSender implements RtpSenderInterface
     }
 
     /**
-     * Periodic RTCP tick. Public so the watcher can be rescheduled after unserialize.
+     * Periodic RTCP tick.
+     *
+     * Scheduled only as the first-class callable `$this->onRtcpTimer(...)` handed to
+     * EventLoop::repeat(), including when the watcher is re-armed after unserialize. That callable
+     * keeps this method's private scope, so it does not need to be public.
      */
-    public function onRtcpTimer(): void
+    private function onRtcpTimer(): void
     {
         try {
             $rtcpPackets = $this->generateRtcpPackets();

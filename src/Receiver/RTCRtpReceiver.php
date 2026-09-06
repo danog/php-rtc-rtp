@@ -533,9 +533,13 @@ final class RTCRtpReceiver implements RtpReceiverInterface
     }
 
     /**
-     * Periodic RTCP tick. Public so the watcher can be rescheduled after unserialize.
+     * Periodic RTCP tick.
+     *
+     * Scheduled only as the first-class callable `$this->onRtcpTimer(...)` handed to
+     * EventLoop::repeat(), including when the watcher is re-armed after unserialize. That callable
+     * keeps this method's private scope, so it does not need to be public.
      */
-    public function onRtcpTimer(): void
+    private function onRtcpTimer(): void
     {
         try {
             $rtcpPackets = $this->generateRtcpRrPacket();

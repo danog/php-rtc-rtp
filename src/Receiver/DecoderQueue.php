@@ -70,9 +70,13 @@ final class DecoderQueue
     }
 
     /**
-     * Drain queued frames onto the track. Public so unserialize can restart it.
+     * Drain queued frames onto the track.
+     *
+     * Restarted only as the first-class callable `$this->drain(...)` handed to EventLoop::queue(),
+     * including when unserialize re-queues it. That callable captures this method's private scope,
+     * so the event loop can run it while it stays private.
      */
-    public function drain(): void
+    private function drain(): void
     {
         $track = $this->track;
         if ($track === null) {
