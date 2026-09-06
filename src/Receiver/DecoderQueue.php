@@ -84,14 +84,38 @@ final class DecoderQueue
 
             return;
         }
-        foreach ($this->queue->iterate() as $frame) {
-            $decodedFrame = $this->decoder->decode($frame);
-            /** @var FrameInterface[] $decodedFrame */
-            foreach ($decodedFrame as $decoded) {
-                $track->queueFrame($decoded);
+        // Park the decode loop on the queue iterator, not on $this. Iterating inside an instance
+        // method keeps $this on the parked fiber's stack, pinning this queue (and the receiver that
+        // owns it) in the event loop forever — an unset()+gc could never reclaim it. Holding only
+        // the iterator and a weak reference lets the owner be collected; __destruct() then
+        // completes the queue so this fiber unwinds.
+        $weak = \WeakReference::create($this);
+        $iterator = $this->queue->iterate();
+        EventLoop::queue(static function () use ($weak, $iterator, $track): void {
+            foreach ($iterator as $frame) {
+                $self = $weak->get();
+                if ($self === null) {
+                    return;
+                }
+                $decodedFrame = $self->decoder->decode($frame);
+                /** @var FrameInterface[] $decodedFrame */
+                foreach ($decodedFrame as $decoded) {
+                    $track->queueFrame($decoded);
+                }
+                unset($self);
             }
+            $self = $weak->get();
+            if ($self !== null) {
+                $self->running = false;
+            }
+        });
+    }
+
+    public function __destruct()
+    {
+        if (!$this->queue->isComplete()) {
+            $this->queue->complete();
         }
-        $this->running = false;
     }
 
     /**

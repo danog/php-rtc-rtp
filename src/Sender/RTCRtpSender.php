@@ -360,70 +360,86 @@ final class RTCRtpSender implements RtpSenderInterface
      */
     private function drainRtp(): void
     {
-            // Capture the track once. The sender may be stopped (or its track detached)
-            // between queueing and execution, in which case there is nothing to send yet.
-            $track = $this->track;
-            if ($track === null || !$this->started) {
-                return;
-            }
-            foreach ($track->getConsumer() as $data) {
-                // The sender may have its track detached while iterating: bail out
-                // immediately instead of pushing more media onto the wire. The captured
-                // track reference stays valid, but stop() completes its consumer so the
-                // loop would also end cleanly on its own.
-                if ($this->track === null) {
-                    break;
+        // Capture the track once. The sender may be stopped (or its track detached)
+        // between queueing and execution, in which case there is nothing to send yet.
+        $track = $this->track;
+        if ($track === null || !$this->started) {
+            return;
+        }
+        // Park the send loop on the track consumer, not on $this. Iterating inside an instance
+        // method keeps $this on the parked fiber's stack, so the event loop would pin this sender
+        // forever and an unset()+gc could never reclaim it. Hold the consumer and a weak reference
+        // instead; stop() (also reached from __destruct) completes the consumer, so the fiber
+        // unwinds once the owner is collected.
+        $weak = \WeakReference::create($this);
+        $consumer = $track->getConsumer();
+        EventLoop::queue(static function () use ($weak, $consumer): void {
+            foreach ($consumer as $data) {
+                // The sender may have been stopped or its track detached while iterating (or the
+                // owner collected entirely): stop pushing media onto the wire.
+                $self = $weak->get();
+                if ($self === null || $self->track === null || !$self->started) {
+                    return;
                 }
                 // While the sender is paused (e.g. the transceiver direction dropped the
                 // outgoing media, or the track was muted), drain frames off the consumer
                 // without putting anything on the wire. This keeps the encoder from
                 // building up a backlog that would burst out the moment we resume.
-                if (!$this->enabled) {
+                if (!$self->enabled) {
                     continue;
                 }
-
-                $audioLevel = null;
-                if ($data instanceof EncodedPacket) {
-                    $audioLevel = $data->getAudioLevel();
-                }
-                if ($data instanceof FrameInterface) {
-                    if ($data instanceof AudioFrame) {
-                        $audioLevel = RtpUtility::computeAudioLevelDbov($data->getPlanes()[0]->getData(), $data->getSamples());
-                    }
-                    $useKeyFrame = $this->useKeyframe;
-                    $this->useKeyframe = false;
-                    $this->encoder ??= Codec::getEncoder($this->codec);
-                    $encoded = $this->encoder->encode($data, $useKeyFrame);
-                    if (\is_string($encoded)) {
-                        throw new InvalidArgumentException("Encoder returned a raw string instead of a payload list");
-                    }
-                    /** @var array{0: string[], 1: int} $encoded */
-                    [$payloads, $timestamp] = $encoded;
-                } else {
-                    // pack() handles both EncodedPacket and AVCodec Packet: pre-encoded frames are
-                    // passed straight through (still packetized for video), while raw packets have
-                    // their timebase converted to the codec's RTP clock.
-                    $this->encoder ??= Codec::getEncoder($this->codec);
-                    $encoded = $this->encoder->pack($data);
-                    if (\is_string($encoded)) {
-                        throw new InvalidArgumentException("Encoder returned a raw string instead of a payload list");
-                    }
-                    /** @var array{0: string[], 1: int} $encoded */
-                    [$payloads, $timestamp] = $encoded;
-                }
-
-                if (empty($payloads)) {
-                    continue;
-                }
-
-                $data = new RTCEncodedFrame($payloads, $timestamp, $audioLevel);
-                for ($i = 0; $i < count($data->getPayloads()); $i++) {
-                    $rtpPacket = $this->generateRtpPacket($data, $i);
-                    $this->sendRtpPacket($rtpPacket);
-                    $this->updateStatistics($rtpPacket, $data->getPayloads()[$i]);
-                    $this->sequenceNumber = ($this->sequenceNumber + 1) & 0xFFFF;
-                }
+                $self->sendEncodedFrame($data);
+                unset($self);
             }
+        });
+    }
+
+    /**
+     * Encode (or packetize) one frame from the track consumer and put it on the wire.
+     */
+    private function sendEncodedFrame(mixed $data): void
+    {
+        $audioLevel = null;
+        if ($data instanceof EncodedPacket) {
+            $audioLevel = $data->getAudioLevel();
+        }
+        if ($data instanceof FrameInterface) {
+            if ($data instanceof AudioFrame) {
+                $audioLevel = RtpUtility::computeAudioLevelDbov($data->getPlanes()[0]->getData(), $data->getSamples());
+            }
+            $useKeyFrame = $this->useKeyframe;
+            $this->useKeyframe = false;
+            $this->encoder ??= Codec::getEncoder($this->codec);
+            $encoded = $this->encoder->encode($data, $useKeyFrame);
+            if (\is_string($encoded)) {
+                throw new InvalidArgumentException("Encoder returned a raw string instead of a payload list");
+            }
+            /** @var array{0: string[], 1: int} $encoded */
+            [$payloads, $timestamp] = $encoded;
+        } else {
+            // pack() handles both EncodedPacket and AVCodec Packet: pre-encoded frames are
+            // passed straight through (still packetized for video), while raw packets have
+            // their timebase converted to the codec's RTP clock.
+            $this->encoder ??= Codec::getEncoder($this->codec);
+            $encoded = $this->encoder->pack($data);
+            if (\is_string($encoded)) {
+                throw new InvalidArgumentException("Encoder returned a raw string instead of a payload list");
+            }
+            /** @var array{0: string[], 1: int} $encoded */
+            [$payloads, $timestamp] = $encoded;
+        }
+
+        if (empty($payloads)) {
+            return;
+        }
+
+        $data = new RTCEncodedFrame($payloads, $timestamp, $audioLevel);
+        for ($i = 0; $i < count($data->getPayloads()); $i++) {
+            $rtpPacket = $this->generateRtpPacket($data, $i);
+            $this->sendRtpPacket($rtpPacket);
+            $this->updateStatistics($rtpPacket, $data->getPayloads()[$i]);
+            $this->sequenceNumber = ($this->sequenceNumber + 1) & 0xFFFF;
+        }
     }
 
     /**
@@ -505,7 +521,19 @@ final class RTCRtpSender implements RtpSenderInterface
     {
         $this->logger?->debug("RTCP started");
 
-        $this->rtcpTask = EventLoop::repeat(0.5 + ((float) random_int(0, 1000) / 1000.0), $this->onRtcpTimer(...));
+        // Weak self-reference: a repeat watcher registered as $this->onRtcpTimer(...) would pin
+        // this sender in the event loop forever, so an unset()+gc could never reclaim it. The tick
+        // cancels itself once the owner has been collected.
+        $weak = \WeakReference::create($this);
+        $this->rtcpTask = EventLoop::repeat(0.5 + ((float) random_int(0, 1000) / 1000.0), static function (string $id) use ($weak): void {
+            $self = $weak->get();
+            if ($self === null) {
+                EventLoop::cancel($id);
+
+                return;
+            }
+            $self->onRtcpTimer();
+        });
     }
 
     /**

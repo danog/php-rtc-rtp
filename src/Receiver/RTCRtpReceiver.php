@@ -529,7 +529,19 @@ final class RTCRtpReceiver implements RtpReceiverInterface
     {
         $this->logger?->debug(" RTCP started");
 
-        $this->rtcpTask = EventLoop::repeat(0.5 + ((float) random_int(0, 1000) / 1000.0), $this->onRtcpTimer(...));
+        // Weak self-reference: a repeat watcher registered as $this->onRtcpTimer(...) would pin
+        // this receiver in the event loop forever, so an unset()+gc could never reclaim it. The
+        // tick cancels itself once the owner has been collected.
+        $weak = \WeakReference::create($this);
+        $this->rtcpTask = EventLoop::repeat(0.5 + ((float) random_int(0, 1000) / 1000.0), static function (string $id) use ($weak): void {
+            $self = $weak->get();
+            if ($self === null) {
+                EventLoop::cancel($id);
+
+                return;
+            }
+            $self->onRtcpTimer();
+        });
     }
 
     /**
