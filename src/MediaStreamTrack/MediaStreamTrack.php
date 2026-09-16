@@ -14,12 +14,12 @@ namespace Webrtc\RTP\MediaStreamTrack;
 use Amp\Cancellation;
 use Amp\Pipeline\ConcurrentIterator;
 use Amp\Pipeline\Queue;
-use Evenement\EventEmitter;
 use Ramsey\Uuid\Uuid;
 use Webrtc\Codecs\EncodedPacket;
 use Webrtc\AVCodec\Frame\FrameInterface;
 use Webrtc\Mixin\SerializableState;
 use Webrtc\RTP\Enum\MediaKind;
+use Webrtc\RTP\Listener\MediaStreamTrackEndedListener;
 
 /**
  * Represents a media stream track (audio, video, etc.) in WebRTC.
@@ -29,7 +29,7 @@ use Webrtc\RTP\Enum\MediaKind;
  * identification, tracking whether the track has ended, and emitting events when
  * the track state changes.
  */
-abstract class MediaStreamTrack extends EventEmitter
+abstract class MediaStreamTrack
 {
     /**
      * The kind of media track (e.g., "audio", "video").
@@ -54,6 +54,9 @@ abstract class MediaStreamTrack extends EventEmitter
 
     private bool $stopped = false;
 
+    /** @var \WeakMap<MediaStreamTrackEndedListener, null> Listeners notified when the track ends. */
+    private \WeakMap $endedListeners;
+
     /**
      * MediaStreamTrack constructor.
      *
@@ -65,6 +68,18 @@ abstract class MediaStreamTrack extends EventEmitter
         /** @var Queue<FrameInterface|EncodedPacket> */
         $this->frameQueue = new Queue();
         $this->kind = $kind;
+        /** @var \WeakMap<MediaStreamTrackEndedListener, null> */
+        $this->endedListeners = new \WeakMap();
+    }
+
+    /**
+     * Register a listener notified when the track ends.
+     *
+     * Typed replacement for on('ended'); the listener is a plain object captured by serialization.
+     */
+    public function addEndedListener(MediaStreamTrackEndedListener $listener): void
+    {
+        $this->endedListeners[$listener] = null;
     }
 
     /**
@@ -80,7 +95,7 @@ abstract class MediaStreamTrack extends EventEmitter
     /**
      * Marks the track as ended and resolves any pending receive operations.
      *
-     * This method stops the track and emits an "ended" event. It also removes
+     * This method stops the track and notifies its "ended" listeners. It also clears
      * any listeners attached to the track.
      */
     public function stop(): void
@@ -91,8 +106,16 @@ abstract class MediaStreamTrack extends EventEmitter
 
         $this->stopped = true;
         $this->frameQueue->complete();
-        $this->emit("ended");
-        $this->removeAllListeners();
+        $this->notifyEnded();
+        /** @var \WeakMap<MediaStreamTrackEndedListener, null> */
+        $this->endedListeners = new \WeakMap();
+    }
+
+    private function notifyEnded(): void
+    {
+        foreach ($this->endedListeners as $listener => $_) {
+            $listener->onMediaStreamTrackEnded();
+        }
     }
 
     public function isEnded(): bool
@@ -137,9 +160,14 @@ abstract class MediaStreamTrack extends EventEmitter
      */
     public function __serialize(): array
     {
-        return SerializableState::export($this, [
+        $state = SerializableState::export($this, [
             'frameQueue' => null,
+            // WeakMaps cannot be serialized; snapshot their keys and rebuild on the far side.
+            'endedListeners' => ['__uninitialized' => true],
         ]);
+        $state['__endedListeners'] = SerializableState::weakMapToList($this->endedListeners);
+
+        return $state;
     }
 
     /**
@@ -147,6 +175,9 @@ abstract class MediaStreamTrack extends EventEmitter
      */
     public function __unserialize(array $data): void
     {
+        /** @var list<MediaStreamTrackEndedListener> $endedListeners */
+        $endedListeners = $data['__endedListeners'] ?? [];
+        unset($data['__endedListeners']);
         foreach (array_keys($data) as $key) {
             if (str_ends_with($key, "\0frameQueue")) {
                 unset($data[$key]);
@@ -155,5 +186,7 @@ abstract class MediaStreamTrack extends EventEmitter
         SerializableState::import($this, $data);
         /** @var Queue<FrameInterface|EncodedPacket> */
         $this->frameQueue = new Queue();
+        /** @var \WeakMap<MediaStreamTrackEndedListener, null> */
+        $this->endedListeners = SerializableState::listToWeakMap($endedListeners);
     }
 }

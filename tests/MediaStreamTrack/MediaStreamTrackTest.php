@@ -4,6 +4,7 @@ namespace Tests\Webrtc\RTP\MediaStreamTrack;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use Webrtc\RTP\Listener\MediaStreamTrackEndedListener;
 use Webrtc\RTP\MediaStreamTrack\MediaStreamTrack;
 
 #[CoversClass(MediaStreamTrack::class)]
@@ -27,15 +28,20 @@ class MediaStreamTrackTest extends TestCase
     {
         $track = new AudioStreamTrack();
         $consumer = $track->getConsumer();
-        $endedEvents = 0;
-        $track->on('ended', static function () use (&$endedEvents): void {
-            ++$endedEvents;
-        });
+        $listener = new class implements MediaStreamTrackEndedListener {
+            public int $endedEvents = 0;
+
+            public function onMediaStreamTrackEnded(): void
+            {
+                ++$this->endedEvents;
+            }
+        };
+        $track->addEndedListener($listener);
 
         $track->stop();
         $track->stop();
 
         $this->assertFalse($consumer->continue());
-        $this->assertSame(1, $endedEvents);
+        $this->assertSame(1, $listener->endedEvents);
     }
 }
