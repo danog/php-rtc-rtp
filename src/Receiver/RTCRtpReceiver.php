@@ -612,7 +612,8 @@ final class RTCRtpReceiver implements RtpReceiverInterface
         $this->logger?->debug(sprintf(" Sent Rtcp packet: %s", $packet));
         try {
             $this->transport->sendRtcp($packet->encode());
-        } catch (Exception) {
+        } catch (\Throwable $e) {
+            $this->logger?->warning("Failed to send RTCP: " . $e->getMessage());
         }
     }
 

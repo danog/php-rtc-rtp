@@ -120,6 +120,9 @@ final class RtpRouter
                         $addRecipient($this->senders[$ssrc] ?? null);
                     }
                 } catch (RtpExceptionInterface) {
+                    // A malformed REMB FCI only costs us the extra SSRCs it lists; the packet's
+                    // primary media SSRC was already added above, so intentionally keep routing
+                    // the compound RTCP rather than dropping it over an optional feedback field.
                 }
             }
         }
