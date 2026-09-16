@@ -422,6 +422,41 @@ class RTCRtpReceiverTest extends TestCase
         $receiver->stop();
     }
 
+    public function testSendRtcpFailureIsLoggedNotSwallowed()
+    {
+        // Regression: sendRtcp() used to discard transport failures in a bare empty catch, so a
+        // failed RTCP send left no trace. It must now log a warning (like the sender path) while
+        // still not letting the failure escape.
+        $throwingTransport = new class extends RTCDtlsTransportMock {
+            public function sendRtcp(string $data): void
+            {
+                throw new \RuntimeException("transport down");
+            }
+        };
+
+        $logger = new class extends \Psr\Log\AbstractLogger {
+            /** @var list<string> */
+            public array $messages = [];
+
+            public function log($level, string|\Stringable $message, array $context = []): void
+            {
+                $this->messages[] = (string) $message;
+            }
+        };
+
+        $receiver = new RTCRtpReceiver(MediaKind::Video, $throwingTransport);
+        $receiver->setLogger($logger);
+        $receiver->setRtcpSsrc(1234);
+
+        // Must not throw despite the transport failing.
+        $receiver->sendRtcpPli(5678);
+
+        $this->assertNotEmpty(
+            array_filter($logger->messages, static fn (string $m) => str_contains($m, "Failed to send RTCP")),
+            "expected the RTCP send failure to be logged"
+        );
+    }
+
     public function testInvalidDtlsTransportState()
     {
         $closedTransportMock = $this->getMockBuilder(RTCDtlsTransportMock::class)
