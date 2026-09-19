@@ -68,6 +68,16 @@ final class RTCRtpTransceiver
     /** @var RTCRtpCodecParameters[] List of codecs. */
     private array $codecs = [];
 
+    /**
+     * fmtp parameter overrides to merge onto negotiated codecs, keyed by lower-cased MIME type.
+     * Lets an application advertise codec-specific parameters (e.g. an H.264 profile-level-id or an
+     * AV1 profile/level/tier read from the actual bitstream) that differ from the codec table's
+     * defaults, since {@see self::setCodecPreferences()} can only reorder the registered capabilities.
+     *
+     * @var array<string, array<string, int|string|null>>
+     */
+    private array $codecParameterOverrides = [];
+
     /** @var RTCRtpHeaderExtensionParameters[] List of header extensions. */
     private array $headerExtensions = [];
 
@@ -354,13 +364,50 @@ final class RTCRtpTransceiver
     }
 
     /**
-     * Sets the negotiated codecs for this transceiver.
+     * Sets the negotiated codecs for this transceiver, applying any fmtp parameter overrides
+     * registered with {@see self::setCodecParameterOverrides()}.
      *
      * @param RTCRtpCodecParameters[] $codecs List of negotiated codec parameters.
      */
     public function setCodecs(array $codecs): void
     {
+        if ($this->codecParameterOverrides !== []) {
+            $codecs = array_map(function (RTCRtpCodecParameters $codec): RTCRtpCodecParameters {
+                $override = $this->codecParameterOverrides[strtolower($codec->mimeType)] ?? null;
+                if ($override === null) {
+                    return $codec;
+                }
+                // Build a fresh instance so shared codec-table objects are never mutated.
+                return new RTCRtpCodecParameters(
+                    $codec->mimeType,
+                    $codec->clockRate,
+                    $codec->channels,
+                    $codec->payloadType,
+                    $codec->rtcpFeedback,
+                    array_merge($codec->parameters, $override),
+                );
+            }, $codecs);
+        }
         $this->codecs = $codecs;
+    }
+
+    /**
+     * Register fmtp parameter overrides to merge onto negotiated codecs of matching MIME types, so the
+     * generated SDP advertises codec parameters taken from the actual media instead of the codec
+     * table's defaults. Pass an empty array to clear them.
+     *
+     * @param array<string, array<string, int|string|null>> $overrides MIME type => fmtp parameters.
+     */
+    public function setCodecParameterOverrides(array $overrides): void
+    {
+        $this->codecParameterOverrides = [];
+        foreach ($overrides as $mimeType => $parameters) {
+            $this->codecParameterOverrides[strtolower($mimeType)] = $parameters;
+        }
+        // Re-apply immediately so codecs negotiated before this call also carry the overrides.
+        if ($this->codecs !== []) {
+            $this->setCodecs($this->codecs);
+        }
     }
 
     /**
