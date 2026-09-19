@@ -382,9 +382,7 @@ final class RTCRtpReceiver implements RtpReceiverInterface
     {
         // BWDEBUG
         if ($this->kind === MediaKind::Video) {
-            $GLOBALS['__bw_vid'] = ($GLOBALS['__bw_vid'] ?? 0) + 1;
             $hasAst = $packet->getExtensions()->getAbsSendTime() !== null;
-            if ($GLOBALS['__bw_vid'] % 100 === 1) { \danog\MadelineProto\Logger::log('BWDEBUG video pkt#'.$GLOBALS['__bw_vid'].' hasAbsSendTime='.($hasAst?'1':'0').' estimator='.($this->remoteBitrateEstimator!==null?'1':'0').' rtcpSsrc='.($this->rtcpSsrc??'null'), \danog\MadelineProto\Logger::ERROR); }
         }
         if ($this->remoteBitrateEstimator !== null && $packet->getExtensions()->getAbsSendTime() !== null) {
             // RemoteBitrateEstimator::add(arrivalTimeMs, absSendTime, payloadSize, ssrc) — the first
@@ -397,7 +395,6 @@ final class RTCRtpReceiver implements RtpReceiverInterface
                 strlen($packet->getPayload()) + $packet->getPaddingSize(),
                 $packet->getSsrc()
             );
-            if ($this->kind === MediaKind::Video && $remb !== null && ($GLOBALS['__bw_remb'] = ($GLOBALS['__bw_remb'] ?? 0) + 1) % 20 === 1) { \danog\MadelineProto\Logger::log('BWDEBUG REMB #'.$GLOBALS['__bw_remb'].' bitrate='.$remb[0].' rtcpSsrc='.($this->rtcpSsrc??'null'), \danog\MadelineProto\Logger::ERROR); } // BWDEBUG
 
             if ($this->rtcpSsrc !== null && $remb !== null) {
                 /** @var array{0: int, 1: int[]} $remb */
