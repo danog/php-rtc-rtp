@@ -157,6 +157,11 @@ final class RTCRtpSender implements RtpSenderInterface
     /** @var LoggerInterface|null The logger instance */
     private ?LoggerInterface $logger = null;
 
+    /** Consecutive failed sends, to stop a hopelessly broken sender rather than fail on every frame. */
+    private int $consecutiveSendFailures = 0;
+    /** How many consecutive send failures are tolerated before the sender gives up. */
+    private const MAX_CONSECUTIVE_SEND_FAILURES = 100;
+
     /** @var string Handle of The RTCP timer task */
     private string $rtcpTask;
 
@@ -388,7 +393,25 @@ final class RTCRtpSender implements RtpSenderInterface
                 if (!$self->enabled) {
                     continue;
                 }
-                $self->sendEncodedFrame($data);
+                // A frame failing to go on the wire — a transient socket error, or an SRTP context that
+                // cannot encrypt this packet (e.g. a stale one after a resume) — must never escape as an
+                // uncaught event-loop exception and kill the whole process. Log it (never hide it), drop
+                // the frame, and keep draining; but a fault that recurs on every frame is not transient,
+                // so give up after a bounded number of consecutive failures instead of looping forever —
+                // the higher layer (which watches the connection) can then renegotiate or end the call.
+                try {
+                    $self->sendEncodedFrame($data);
+                    $self->consecutiveSendFailures = 0;
+                } catch (Throwable $e) {
+                    $self->logger?->error('Failed to send an outgoing RTP frame: '.$e->getMessage());
+                    if (++$self->consecutiveSendFailures >= self::MAX_CONSECUTIVE_SEND_FAILURES) {
+                        $self->logger?->error(
+                            'Stopping the RTP sender after '.self::MAX_CONSECUTIVE_SEND_FAILURES
+                            .' consecutive send failures; the transport needs to be renegotiated.',
+                        );
+                        return;
+                    }
+                }
                 unset($self);
             }
         });
