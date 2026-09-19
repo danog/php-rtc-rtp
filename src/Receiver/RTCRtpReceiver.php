@@ -63,6 +63,13 @@ use Webrtc\Stats\RTCStatsReport;
 final class RTCRtpReceiver implements RtpReceiverInterface
 
 {
+    /**
+     * Minimum bandwidth (bps) we ever advertise in REMB. A receive-and-record endpoint is not
+     * downlink-limited, and the delay-based estimator misfires under PHP's arrival-time jitter, so we
+     * never let it throttle the peer below a value that lets it reach its own configured maximum.
+     */
+    private const REMB_FLOOR_BPS = 4_000_000;
+
     private bool $enabled = true;
     /** @var array<int, DateTimeImmutable> */
     private array $activeSsrc = [];
@@ -373,21 +380,40 @@ final class RTCRtpReceiver implements RtpReceiverInterface
      */
     private function feedBitrateEstimator(RtpPacket $packet, int $arrivalTimeMs): void
     {
+        // BWDEBUG
+        if ($this->kind === MediaKind::Video) {
+            $GLOBALS['__bw_vid'] = ($GLOBALS['__bw_vid'] ?? 0) + 1;
+            $hasAst = $packet->getExtensions()->getAbsSendTime() !== null;
+            if ($GLOBALS['__bw_vid'] % 100 === 1) { \danog\MadelineProto\Logger::log('BWDEBUG video pkt#'.$GLOBALS['__bw_vid'].' hasAbsSendTime='.($hasAst?'1':'0').' estimator='.($this->remoteBitrateEstimator!==null?'1':'0').' rtcpSsrc='.($this->rtcpSsrc??'null'), \danog\MadelineProto\Logger::ERROR); }
+        }
         if ($this->remoteBitrateEstimator !== null && $packet->getExtensions()->getAbsSendTime() !== null) {
+            // RemoteBitrateEstimator::add(arrivalTimeMs, absSendTime, payloadSize, ssrc) — the first
+            // two arguments were reversed here, swapping arrival and send time inside the estimator and
+            // producing garbage (near-zero) REMB bitrates, which made peers throttle to almost nothing
+            // (Telegram Android showed "weak signal" and sent 320x180). Pass them in the correct order.
             $remb = $this->remoteBitrateEstimator->add(
-                $packet->getExtensions()->getAbsSendTime(),
                 $arrivalTimeMs,
+                $packet->getExtensions()->getAbsSendTime(),
                 strlen($packet->getPayload()) + $packet->getPaddingSize(),
                 $packet->getSsrc()
             );
+            if ($this->kind === MediaKind::Video && $remb !== null && ($GLOBALS['__bw_remb'] = ($GLOBALS['__bw_remb'] ?? 0) + 1) % 20 === 1) { \danog\MadelineProto\Logger::log('BWDEBUG REMB #'.$GLOBALS['__bw_remb'].' bitrate='.$remb[0].' rtcpSsrc='.($this->rtcpSsrc??'null'), \danog\MadelineProto\Logger::ERROR); } // BWDEBUG
 
             if ($this->rtcpSsrc !== null && $remb !== null) {
                 /** @var array{0: int, 1: int[]} $remb */
+                // The delay-based estimator relies on browser-precise packet arrival timestamps; in PHP
+                // the arrival time carries event-loop jitter far above the overuse detector's ~0.2ms
+                // gradient sensitivity, so it flags false congestion and the AIMD collapses toward the
+                // low early-call rate, throttling the peer to a tiny resolution. This endpoint only
+                // receives and records — it is not downlink-limited — so we never advertise a REMB below
+                // a floor that lets the peer reach its own configured maximum. The peer's encoder still
+                // caps itself, so this maximises recording quality without over-sending.
+                $rembBitrate = max((int) $remb[0], self::REMB_FLOOR_BPS);
                 $rtcpPacket = new RtcpPsfbPacket(
                     fmt: RtcpConstants::RTCP_PSFB_APP,
                     ssrc: $this->rtcpSsrc,
                     mediaSsrc: 0,
-                    fci: RtpUtility::packRembFci($remb[0], $remb[1])
+                    fci: RtpUtility::packRembFci($rembBitrate, $remb[1])
                 );
 
                 $this->sendRtcp($rtcpPacket);
