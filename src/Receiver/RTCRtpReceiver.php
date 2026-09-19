@@ -16,6 +16,7 @@ use DateInvalidOperationException;
 use DateMalformedStringException;
 use DateTimeImmutable;
 use Exception;
+use Throwable;
 use Psr\Log\LoggerInterface;
 use Random\RandomException;
 use Revolt\EventLoop;
@@ -157,6 +158,15 @@ final class RTCRtpReceiver implements RtpReceiverInterface
     public function isRawMode(): bool
     {
         return $this->rawMode;
+    }
+
+    /** Optional end-to-end frame decryptor; when set, incoming frames are decrypted after reassembly. */
+    private ?\Webrtc\RTP\Crypto\FrameCryptorInterface $frameCryptor = null;
+
+    /** Install (or clear) the end-to-end frame decryptor applied to incoming frames. */
+    public function setFrameCryptor(?\Webrtc\RTP\Crypto\FrameCryptorInterface $frameCryptor): void
+    {
+        $this->frameCryptor = $frameCryptor;
     }
 
     public function getTrack(): ?MediaStreamTrack
@@ -513,6 +523,12 @@ final class RTCRtpReceiver implements RtpReceiverInterface
      */
     private function parsePayload(RtpPacket $packet, RTCRtpCodecParameters $codec): bool
     {
+        // With an end-to-end frame decryptor the payload is opaque ciphertext, not a codec payload:
+        // keep it raw so the jitter buffer reassembles the exact ciphertext to decrypt.
+        if ($this->frameCryptor !== null) {
+            $packet->setDecodedData($packet->payload);
+            return true;
+        }
         try {
             [, $decoded] = Codec::depayload($codec, $packet->payload);
             $packet->setDecodedData((string) $decoded);
@@ -540,7 +556,7 @@ final class RTCRtpReceiver implements RtpReceiverInterface
             $this->sendRtcpPli($packet->getSsrc());
         }
 
-        $this->decodeFrame($encodedFrame, $codec);
+        $this->decodeFrame($encodedFrame, $codec, $packet->getSsrc());
     }
 
     /**
@@ -704,13 +720,24 @@ final class RTCRtpReceiver implements RtpReceiverInterface
      * @param JitterFrame|null $encodedFrame The encoded frame to decode.
      * @param RTCRtpCodecParameters $codec The codec to use for decoding.
      */
-    private function decodeFrame(?JitterFrame $encodedFrame, RTCRtpCodecParameters $codec): void
+    private function decodeFrame(?JitterFrame $encodedFrame, RTCRtpCodecParameters $codec, int $ssrc = 0): void
     {
         if (!$encodedFrame) {
             return;
         }
 
         $encodedFrame->setTimestamp($this->timestampMapper->map($encodedFrame->getTimestamp()));
+
+        if ($this->frameCryptor !== null) {
+            // Decrypt the reassembled ciphertext frame back to the clean encoded frame; a frame that
+            // fails to decrypt or verify is dropped rather than delivered.
+            try {
+                $encodedFrame->setData($this->frameCryptor->decryptFrame($this->kind, $ssrc, $encodedFrame->getData()));
+            } catch (Throwable $e) {
+                $this->logger?->debug('x dropping a frame that failed to decrypt: '.$e->getMessage());
+                return;
+            }
+        }
 
         if ($this->rawMode) {
             // Hand the assembled, still-encoded frame straight to the track: this avoids loading

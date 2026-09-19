@@ -162,6 +162,17 @@ final class RTCRtpSender implements RtpSenderInterface
     /** How many consecutive send failures are tolerated before the sender gives up. */
     private const MAX_CONSECUTIVE_SEND_FAILURES = 100;
 
+    /** Optional end-to-end frame encryptor; when set, each encoded frame is encrypted before it is sent. */
+    private ?\Webrtc\RTP\Crypto\FrameCryptorInterface $frameCryptor = null;
+    /** Bytes per RTP payload when generically fragmenting an encrypted frame. */
+    private const FRAME_CRYPTO_CHUNK = 1100;
+
+    /** Install (or clear) the end-to-end frame encryptor applied to outgoing frames. */
+    public function setFrameCryptor(?\Webrtc\RTP\Crypto\FrameCryptorInterface $frameCryptor): void
+    {
+        $this->frameCryptor = $frameCryptor;
+    }
+
     /** @var string Handle of The RTCP timer task */
     private string $rtcpTask;
 
@@ -422,7 +433,12 @@ final class RTCRtpSender implements RtpSenderInterface
      */
     private function sendEncodedFrame(FrameInterface|EncodedPacket $data): void
     {
+        $k = $this->kind === MediaKind::Video ? 'v' : 'a'; // TXDEBUG
+        $GLOBALS['__tx'][$k] = ($GLOBALS['__tx'][$k] ?? 0) + 1; // TXDEBUG
+        if (($GLOBALS['__tx'][$k] % 100) === 1) { \danog\MadelineProto\Logger::log("TXDEBUG send $k #".$GLOBALS['__tx'][$k], \danog\MadelineProto\Logger::ERROR); } // TXDEBUG
         $audioLevel = null;
+        // The original frame, needed as the plaintext for end-to-end encryption before packetization.
+        $cleanFrame = $data instanceof EncodedPacket ? $data->getData() : null;
         if ($data instanceof EncodedPacket) {
             $audioLevel = $data->getAudioLevel();
         }
@@ -454,6 +470,14 @@ final class RTCRtpSender implements RtpSenderInterface
 
         if (empty($payloads)) {
             return;
+        }
+
+        // End-to-end frame encryption: encrypt the clean encoded frame and fragment the ciphertext
+        // generically (bypassing codec packetization). A frame-cryptor receiver skips depacketization,
+        // reassembles the ciphertext by timestamp and decrypts it back to the same clean frame.
+        if ($this->frameCryptor !== null) {
+            $cipher = $this->frameCryptor->encryptFrame($this->kind, $this->ssrc, $cleanFrame ?? implode('', $payloads));
+            $payloads = str_split($cipher, self::FRAME_CRYPTO_CHUNK) ?: [''];
         }
 
         $data = new RTCEncodedFrame($payloads, $timestamp, $audioLevel);
