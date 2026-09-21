@@ -741,11 +741,15 @@ final class RTCRtpReceiver implements RtpReceiverInterface
 
         if ($this->rawMode) {
             // Hand the assembled, still-encoded frame straight to the track: this avoids loading
-            // any codec at all, which is what lets calls work without the FFI extension.
-            $this->track?->queueFrame(new EncodedPacket(
-                $encodedFrame->getData(),
-                $encodedFrame->getTimestamp(),
-            ));
+            // any codec at all, which is what lets calls work without the FFI extension. Codecs
+            // whose packets do not simply concatenate into a frame (AV1) are put back together here.
+            try {
+                $data = Codec::finalizeFrame($codec, $encodedFrame->getData());
+            } catch (Throwable $e) {
+                $this->logger?->debug('x dropping a frame that could not be reassembled: '.$e->getMessage());
+                return;
+            }
+            $this->track?->queueFrame(new EncodedPacket($data, $encodedFrame->getTimestamp()));
             return;
         }
 
