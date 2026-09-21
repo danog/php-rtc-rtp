@@ -415,7 +415,7 @@ final class RTCRtpReceiver implements RtpReceiverInterface
                 // receives and records — it is not downlink-limited — so we never advertise a REMB below
                 // a floor that lets the peer reach its own configured maximum. The peer's encoder still
                 // caps itself, so this maximises recording quality without over-sending.
-                $rembBitrate = max((int) $remb[0], self::REMB_FLOOR_BPS);
+                $rembBitrate = max($remb[0], self::REMB_FLOOR_BPS);
                 $rtcpPacket = new RtcpPsfbPacket(
                     fmt: RtcpConstants::RTCP_PSFB_APP,
                     ssrc: $this->rtcpSsrc,

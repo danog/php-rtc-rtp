@@ -433,9 +433,6 @@ final class RTCRtpSender implements RtpSenderInterface
      */
     private function sendEncodedFrame(FrameInterface|EncodedPacket $data): void
     {
-        $k = $this->kind === MediaKind::Video ? 'v' : 'a'; // TXDEBUG
-        $GLOBALS['__tx'][$k] = ($GLOBALS['__tx'][$k] ?? 0) + 1; // TXDEBUG
-        if (($GLOBALS['__tx'][$k] % 100) === 1) { \danog\MadelineProto\Logger::log("TXDEBUG send $k #".$GLOBALS['__tx'][$k], \danog\MadelineProto\Logger::ERROR); } // TXDEBUG
         $audioLevel = null;
         // The original frame, needed as the plaintext for end-to-end encryption before packetization.
         $cleanFrame = $data instanceof EncodedPacket ? $data->getData() : null;
