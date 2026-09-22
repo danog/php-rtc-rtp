@@ -165,7 +165,6 @@ final class RTCRtpSender implements RtpSenderInterface
     /** Optional end-to-end frame encryptor; when set, each encoded frame is encrypted before it is sent. */
     private ?\Webrtc\RTP\Crypto\FrameCryptorInterface $frameCryptor = null;
     /** Bytes per RTP payload when generically fragmenting an encrypted frame. */
-    private const FRAME_CRYPTO_CHUNK = 1100;
 
     /** Install (or clear) the end-to-end frame encryptor applied to outgoing frames. */
     public function setFrameCryptor(?\Webrtc\RTP\Crypto\FrameCryptorInterface $frameCryptor): void
@@ -434,10 +433,22 @@ final class RTCRtpSender implements RtpSenderInterface
     private function sendEncodedFrame(FrameInterface|EncodedPacket $data): void
     {
         $audioLevel = null;
-        // The original frame, needed as the plaintext for end-to-end encryption before packetization.
-        $cleanFrame = $data instanceof EncodedPacket ? $data->getData() : null;
         if ($data instanceof EncodedPacket) {
             $audioLevel = $data->getAudioLevel();
+            if ($this->frameCryptor !== null) {
+                // End-to-end encryption the way WebRTC's encoder-to-packetizer frame transformers do
+                // it: the whole encoded frame is encrypted before packetization and the ciphertext is
+                // then packetized by the codec's own packetizer, so the RTP payload descriptors stay in
+                // the clear and any WebRTC receiver depacketizes it normally (its depacketizer-to-decoder
+                // transformer then decrypts the reassembled frame). The cryptor is responsible for
+                // leaving whatever the packetizer/depacketizer parse of the bitstream unencrypted.
+                $data = new EncodedPacket(
+                    $this->frameCryptor->encryptFrame($this->kind, $this->ssrc, $data->getData()),
+                    $data->getTimestamp(),
+                    $data->isKeyframe(),
+                    $audioLevel,
+                );
+            }
         }
         if ($data instanceof FrameInterface) {
             if ($data instanceof AudioFrame) {
@@ -469,12 +480,10 @@ final class RTCRtpSender implements RtpSenderInterface
             return;
         }
 
-        // End-to-end frame encryption: encrypt the clean encoded frame and fragment the ciphertext
-        // generically (bypassing codec packetization). A frame-cryptor receiver skips depacketization,
-        // reassembles the ciphertext by timestamp and decrypts it back to the same clean frame.
-        if ($this->frameCryptor !== null) {
-            $cipher = $this->frameCryptor->encryptFrame($this->kind, $this->ssrc, $cleanFrame ?? implode('', $payloads));
-            $payloads = str_split($cipher, self::FRAME_CRYPTO_CHUNK) ?: [''];
+        // Raw frames encoded here are packetized straight away: end-to-end encryption of the encoded
+        // frame is only possible for pre-encoded frames (EncodedPacket), see above.
+        if ($this->frameCryptor !== null && $data instanceof FrameInterface) {
+            throw new InvalidArgumentException('End-to-end frame encryption requires pre-encoded frames (EncodedPacket)');
         }
 
         $data = new RTCEncodedFrame($payloads, $timestamp, $audioLevel);

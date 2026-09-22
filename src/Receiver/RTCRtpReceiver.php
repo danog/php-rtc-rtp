@@ -523,12 +523,9 @@ final class RTCRtpReceiver implements RtpReceiverInterface
      */
     private function parsePayload(RtpPacket $packet, RTCRtpCodecParameters $codec): bool
     {
-        // With an end-to-end frame decryptor the payload is opaque ciphertext, not a codec payload:
-        // keep it raw so the jitter buffer reassembles the exact ciphertext to decrypt.
-        if ($this->frameCryptor !== null) {
-            $packet->setDecodedData($packet->payload);
-            return true;
-        }
+        // With an end-to-end frame decryptor the packets still carry the codec's payload descriptors
+        // (the sender encrypted the encoded frame before packetizing it, like WebRTC's frame
+        // transformers): depacketize normally, the reassembled frame is decrypted in decodeFrame().
         try {
             [, $decoded] = Codec::depayload($codec, $packet->payload);
             $packet->setDecodedData((string) $decoded);
