@@ -40,4 +40,16 @@ final class RemoteStreamTrack extends MediaStreamTrack
     {
         $this->frameQueue->push($frame);
     }
+
+    /**
+     * Adds a frame to the frame queue without waiting for it to be consumed.
+     *
+     * For the last frames, once no more will arrive: whoever stops the track mustn't wait for someone to read them.
+     *
+     * @param FrameInterface|EncodedPacket $frame The frame to add to the queue.
+     */
+    public function queueLastFrame(FrameInterface|EncodedPacket $frame): void
+    {
+        $this->frameQueue->pushAsync($frame)->ignore();
+    }
 }

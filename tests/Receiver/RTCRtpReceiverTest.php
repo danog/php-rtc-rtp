@@ -46,7 +46,9 @@ use Webrtc\Stats\RTCRemoteOutboundRtpStreamStats;
 use Webrtc\Stats\RTCStatsReport;
 use Webrtc\Stats\RTCTransportStats;
 use function PHPUnit\Framework\assertEquals;
+use function Amp\async;
 use function Amp\delay;
+use Amp\TimeoutCancellation;
 
 #[UsesClass(JitterBuffer::class)]
 #[UsesClass(MediaStreamTrack::class)]
@@ -173,6 +175,33 @@ class RTCRtpReceiverTest extends TestCase
 
         $receiver->stop();
         $this->assertTrue($track->isEnded());
+    }
+
+    public function testStopDeliversTheHeldFramesWithoutWaitingForThem(): void
+    {
+        $receiver = new RTCRtpReceiver(MediaKind::Audio, $this->transportMock);
+        $track = new RemoteStreamTrack(MediaKind::Audio);
+        $receiver->setTrack($track);
+        $receiver->setRawMode(true);
+        $receiver->setRtcpSsrc(1234);
+        $receiver->start($this->getRTCRtpReceiveParametersAudio());
+
+        // Fewer frames than the jitter buffer holds back before delivering any.
+        for ($i = 0; $i < 2; $i++) {
+            $packet = RtpPacket::decode($this->getBinary("rtp.bin"));
+            $packet->setSequenceNumber($packet->getSequenceNumber() + $i);
+            $packet->setTimestamp($packet->getTimestamp() + $i * 160);
+            $receiver->handleRtpPacket($packet, $i * 20);
+        }
+
+        // Nobody reads the track yet: stopping mustn't wait for someone to.
+        async($receiver->stop(...))->await(new TimeoutCancellation(2));
+
+        $frames = [];
+        foreach ($track->getConsumer() as $frame) {
+            $frames[] = $frame;
+        }
+        $this->assertCount(2, $frames);
     }
 
     public function testStartReconfiguresRunningReceiver(): void

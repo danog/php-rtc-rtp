@@ -296,7 +296,7 @@ final class RTCRtpReceiver implements RtpReceiverInterface
         // to push them out. (A decoder would be stopped right away, so they're only useful in raw mode.)
         if ($this->rawMode && $this->jitterBuffer !== null && $this->lastCodec !== null) {
             foreach ($this->jitterBuffer->flush() as $frame) {
-                $this->decodeFrame($frame, $this->lastCodec, $this->lastSsrc);
+                $this->decodeFrame($frame, $this->lastCodec, $this->lastSsrc, last: true);
             }
         }
         $this->finishUpRtp();
@@ -732,7 +732,7 @@ final class RTCRtpReceiver implements RtpReceiverInterface
      * @param JitterFrame|null $encodedFrame The encoded frame to decode.
      * @param RTCRtpCodecParameters $codec The codec to use for decoding.
      */
-    private function decodeFrame(?JitterFrame $encodedFrame, RTCRtpCodecParameters $codec, int $ssrc = 0): void
+    private function decodeFrame(?JitterFrame $encodedFrame, RTCRtpCodecParameters $codec, int $ssrc = 0, bool $last = false): void
     {
         if (!$encodedFrame) {
             return;
@@ -761,7 +761,9 @@ final class RTCRtpReceiver implements RtpReceiverInterface
                 $this->logger?->debug('x dropping a frame that could not be reassembled: '.$e->getMessage());
                 return;
             }
-            $this->track?->queueFrame(new EncodedPacket($data, $encodedFrame->getTimestamp()));
+            $packet = new EncodedPacket($data, $encodedFrame->getTimestamp());
+            // When stopping, the frames are only queued: waiting for them to be read would block until someone does.
+            $last ? $this->track?->queueLastFrame($packet) : $this->track?->queueFrame($packet);
             return;
         }
 
