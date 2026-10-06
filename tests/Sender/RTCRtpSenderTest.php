@@ -2,6 +2,10 @@
 
 namespace Tests\Webrtc\RTP\Sender;
 
+use Webrtc\RTCP\RtcpPacket;
+
+use Webrtc\RTCP\RtcpByePacket;
+
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
@@ -69,6 +73,44 @@ class RTCRtpSenderTest extends TestCase
         $rtpParameters = $this->getRTCRtpAudioSendParameters();
         $sender->start($rtpParameters);
         $sender->stop();
+    }
+
+    /**
+     * Count the BYE packets sent so far.
+     */
+    private function countByes(): int
+    {
+        $byes = 0;
+        foreach ($this->transportMock->getRtcpPackets() as $data) {
+            foreach (RtcpPacket::decode($data) as $packet) {
+                if ($packet instanceof RtcpByePacket) {
+                    $byes++;
+                }
+            }
+        }
+        return $byes;
+    }
+
+    public function testStopSendsByeOnce(): void
+    {
+        $sender = new RTCRtpSender(new AudioStreamTrack(), $this->transportMock);
+        $sender->start($this->getRTCRtpAudioSendParameters());
+        $sender->stop();
+        $sender->stop();
+        unset($sender);
+
+        $this->assertSame(1, $this->countByes());
+    }
+
+    public function testDestroyingASenderDoesNotSendBye(): void
+    {
+        // As when the process exits to be restarted, with the session going on in the next one.
+        $sender = new RTCRtpSender(new AudioStreamTrack(), $this->transportMock);
+        $sender->start($this->getRTCRtpAudioSendParameters());
+        // Called explicitly: the running tasks keep the sender alive here.
+        $sender->__destruct();
+
+        $this->assertSame(0, $this->countByes());
     }
 
     public function testHandleRtcpNack(): void

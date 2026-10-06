@@ -77,6 +77,9 @@ final class RTCRtpReceiver implements RtpReceiverInterface
     /** @var array<int, RTCRtpCodecParameters> */
     private array $codecs = [];
     private ?JitterBuffer $jitterBuffer;
+    /** Codec and SSRC of the last frame added to the jitter buffer, to deliver the frames it still holds on stop. */
+    private ?RTCRtpCodecParameters $lastCodec = null;
+    private int $lastSsrc = 0;
     private ?NackGenerator $nackGenerator;
     private ?RemoteBitrateEstimator $remoteBitrateEstimator;
     private ?RemoteStreamTrack $track = null;
@@ -289,6 +292,13 @@ final class RTCRtpReceiver implements RtpReceiverInterface
         // Cancel RTCP periodic task
         EventLoop::cancel($this->rtcpTask);
         $this->logger?->debug(" RTCP has ended.");
+        // Hand over the encoded frames the jitter buffer was holding back: no packet will arrive anymore
+        // to push them out. (A decoder would be stopped right away, so they're only useful in raw mode.)
+        if ($this->rawMode && $this->jitterBuffer !== null && $this->lastCodec !== null) {
+            foreach ($this->jitterBuffer->flush() as $frame) {
+                $this->decodeFrame($frame, $this->lastCodec, $this->lastSsrc);
+            }
+        }
         $this->finishUpRtp();
     }
 
@@ -306,7 +316,10 @@ final class RTCRtpReceiver implements RtpReceiverInterface
         if ($packet instanceof RtcpSrPacket) {
             $this->handleRtcpSrPacket($packet);
         } elseif ($packet instanceof RtcpByePacket) {
-            $this->stop();
+            // A source leaving (RFC 3550, section 6.6) doesn't end the receiver, which belongs to its
+            // transceiver: the source can come back (a sender restored after a restart of its process
+            // does), and only a renegotiation or closing the connection stops receiving.
+            $this->logger?->debug("RTCP BYE received");
         }
     }
 
@@ -548,6 +561,8 @@ final class RTCRtpReceiver implements RtpReceiverInterface
             return;
         }
         [$pliFlag, $encodedFrame] = $this->jitterBuffer->add($packet);
+        $this->lastCodec = $codec;
+        $this->lastSsrc = $packet->getSsrc();
 
         if ($pliFlag) {
             $this->sendRtcpPli($packet->getSsrc());

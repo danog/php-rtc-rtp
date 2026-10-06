@@ -351,6 +351,36 @@ class JitterBufferTest extends TestCase
         $this->assertTrue($pliFlag);
     }
 
+    public function testFlushAudio(): void
+    {
+        $jBuffer = new JitterBuffer(16, 4);
+        foreach ([[0, 1234], [1, 1235], [2, 1236], [4, 1238]] as [$seq, $timestamp]) {
+            // Held back by the prefetch.
+            [, $frame] = $jBuffer->add($this->createRtpPacket($seq, $timestamp));
+            $this->assertNull($frame);
+        }
+
+        // Every audio packet is a frame: delivered despite the missing one.
+        $this->assertSame([1234, 1235, 1236, 1238], array_map(fn ($frame) => $frame->getTimestamp(), $jBuffer->flush()));
+        $this->assertSame([], $jBuffer->flush());
+    }
+
+    public function testFlushVideo(): void
+    {
+        // Holding frames back until four more are buffered.
+        $jBuffer = new JitterBuffer(128, 4, true);
+        $jBuffer->add($this->createRtpPacket(0, 1234));
+        $jBuffer->add($this->createRtpPacket(1, 1234));
+        $jBuffer->add($this->createRtpPacket(2, 1235));
+        $last = $this->createRtpPacket(3, 1235);
+        $last->setMarker(1);
+        $jBuffer->add($last);
+        $jBuffer->add($this->createRtpPacket(4, 1236));
+
+        // The last frame isn't complete: no packet with the marker bit.
+        $this->assertSame([1234, 1235], array_map(fn ($frame) => $frame->getTimestamp(), $jBuffer->flush()));
+    }
+
     private function createRtpPacket(int $sequenceNumber, int $timeStamp): RtpPacket
     {
         $rtpPacket = new RtpPacket();

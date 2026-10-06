@@ -313,25 +313,38 @@ final class RTCRtpSender implements RtpSenderInterface
     #[\Override]
     public function stop(): void
     {
+        $this->shutdown(true);
+    }
+
+    /**
+     * Stops the RTP and RTCP tasks.
+     *
+     * @param bool $bye Whether to tell the peer that the stream ended with an RTCP BYE packet.
+     */
+    private function shutdown(bool $bye): void
+    {
         if (!$this->started) {
             return;
         }
+        $this->started = false;
 
         $this->transport->removeRtpSender($this);
 
         // Stop RTCP and RTP Tasks
-        $this->stopRtcpTask();
+        $this->stopRtcpTask($bye);
         $this->stopRtpTask();
     }
 
     /**
-     * Stops the RTCP task and sends a BYE packet.
+     * Stops the RTCP task, sending a BYE packet if requested.
      */
-    private function stopRtcpTask(): void
+    private function stopRtcpTask(bool $bye): void
     {
         EventLoop::cancel($this->rtcpTask);
-        $byePacket = new RtcpByePacket([$this->ssrc]);
-        $this->sendRtcpPacket([$byePacket]);
+        if ($bye) {
+            $byePacket = new RtcpByePacket([$this->ssrc]);
+            $this->sendRtcpPacket([$byePacket]);
+        }
 
         $this->logger?->debug(" RTCP has ended.");
     }
@@ -895,11 +908,14 @@ final class RTCRtpSender implements RtpSenderInterface
     }
 
     /**
-     * Destructor - stops the sender when the object is destroyed.
+     * Destructor - releases the tasks of the sender when the object is destroyed.
+     *
+     * No BYE is sent: the object being destroyed doesn't mean the stream ended, for example when the
+     * process exits to be restarted, with the session going on in the next one.
      */
     public function __destruct()
     {
-        $this->stop();
+        $this->shutdown(false);
     }
 
     /**

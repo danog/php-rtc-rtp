@@ -20,28 +20,40 @@ namespace Webrtc\RTP\Receiver;
  */
 final class TimestampMapper
 {
+    /** The last timestamp received. */
     private ?int $last = null;
+    /** The first timestamp received, on the continuous timeline. */
     private ?int $origin = null;
+    /** The last timestamp received, on the continuous timeline. */
+    private ?int $extended = null;
 
     /**
      * Maps an RTP timestamp to a continuous timeline.
      *
-     * This function handles wraparounds to ensure continuity.
+     * Timestamps are compared with serial number arithmetic (RFC 3550): a timestamp is placed at the
+     * point of the timeline closest to the last one, modulo 2^32. A timestamp slightly before the last
+     * one (a reordered packet, or a sender that restarted from a saved state) is not mistaken for a
+     * wraparound, which would put it and every following one 2^32 ticks later.
      *
      * @param int $timestamp The RTP timestamp.
      * @return int The mapped timestamp relative to the first received timestamp.
      */
     public function map(int $timestamp): int
     {
-        if ($this->origin === null) {
+        if ($this->origin === null || $this->last === null) {
             // First timestamp received, set as origin
-            $this->origin = $timestamp;
-        } elseif ($this->last !== null && $timestamp < $this->last) {
-            // RTP timestamp wrapped around (32-bit overflow)
-            $this->origin -= (1 << 32);
+            $this->origin = $this->extended = $this->last = $timestamp;
+            return 0;
         }
 
+        $delta = ($timestamp - $this->last) & 0xFFFFFFFF;
+        if ($delta >= 0x80000000) {
+            $delta -= 0x100000000;
+        }
+        // The last timestamp is on the continuous timeline already, when restored from a state without it.
+        $this->extended = ($this->extended ?? $this->last) + $delta;
         $this->last = $timestamp;
-        return $timestamp - $this->origin;
+
+        return $this->extended - $this->origin;
     }
 }

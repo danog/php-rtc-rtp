@@ -2,6 +2,8 @@
 
 namespace Tests\Webrtc\RTP\Receiver;
 
+use Webrtc\RTCP\RtcpByePacket;
+
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
@@ -155,6 +157,22 @@ class RTCRtpReceiverTest extends TestCase
 
         $receiver->stop();
         self::assertTrue(true);
+    }
+
+    public function testRtcpByeDoesNotStopTheReceiver(): void
+    {
+        $receiver = new RTCRtpReceiver(MediaKind::Audio, $this->transportMock);
+        $track = new RemoteStreamTrack(MediaKind::Audio);
+        $receiver->setTrack($track);
+        $receiver->setRtcpSsrc(1234);
+        $receiver->start($this->getRTCRtpReceiveParametersAudio());
+
+        // The source can come back, like a sender restored after a restart of its process.
+        $receiver->handleRtcpPacket(new RtcpByePacket([1234]));
+        $this->assertFalse($track->isEnded());
+
+        $receiver->stop();
+        $this->assertTrue($track->isEnded());
     }
 
     public function testStartReconfiguresRunningReceiver(): void

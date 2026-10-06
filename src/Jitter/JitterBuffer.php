@@ -165,6 +165,59 @@ final class JitterBuffer
     }
 
     /**
+     * Extracts every frame still in the buffer without waiting for the prefetch, and empties it.
+     *
+     * Used once the stream ended, when no packet will arrive anymore to push them out. A video frame
+     * is only extracted if it's complete: up to a packet with the marker bit, without gaps.
+     *
+     * @return list<JitterFrame>
+     */
+    public function flush(): array
+    {
+        $origin = $this->origin;
+        if ($origin === null) {
+            return [];
+        }
+        $frames = [];
+        /** @var list<RtpPacket> $packets */
+        $packets = [];
+        $timestamp = null;
+        for ($count = 0; $count < $this->capacity; $count++) {
+            $packet = $this->packets[($origin + $count) % $this->capacity] ?? null;
+            if ($packet === null) {
+                if ($this->isVideo) {
+                    // The frame being put together lost a packet, and the frames after it can't be told apart.
+                    $packets = [];
+                    break;
+                }
+                // Each audio packet is a frame of its own.
+                continue;
+            }
+            if ($timestamp !== null && $packet->getTimestamp() !== $timestamp && $packets !== []) {
+                $frames[] = $this->makeFrame($packets, $timestamp);
+                $packets = [];
+            }
+            $timestamp = $packet->getTimestamp();
+            $packets[] = $packet;
+        }
+        if ($packets !== [] && $timestamp !== null && (!$this->isVideo || end($packets)->getMarker())) {
+            $frames[] = $this->makeFrame($packets, $timestamp);
+        }
+        $this->packets = array_fill(0, $this->capacity, null);
+        $this->origin = null;
+
+        return $frames;
+    }
+
+    /**
+     * @param list<RtpPacket> $packets The packets of a frame, in order.
+     */
+    private function makeFrame(array $packets, int $timestamp): JitterFrame
+    {
+        return new JitterFrame(implode("", array_map(fn(RtpPacket $p) => $p->getDecodedData(), $packets)), $timestamp);
+    }
+
+    /**
      * Removes a specific number of packets from the buffer.
      *
      * @param int $count Number of packets to remove.
