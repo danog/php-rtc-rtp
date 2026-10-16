@@ -11,8 +11,6 @@
 
 namespace Webrtc\RTP\Receiver;
 
-use DateInterval;
-use DateInvalidOperationException;
 use DateMalformedStringException;
 use DateTimeImmutable;
 use Exception;
@@ -72,8 +70,8 @@ final class RTCRtpReceiver implements RtpReceiverInterface
     private const REMB_FLOOR_BPS = 4_000_000;
 
     private bool $enabled = true;
-    /** @var array<int, DateTimeImmutable> */
-    private array $activeSsrc = [];
+    /** @var array<int, float> When a packet was last received from each SSRC, as a Unix timestamp. */
+    private array $activeSources = [];
     /** @var array<int, RTCRtpCodecParameters> */
     private array $codecs = [];
     private ?JitterBuffer $jitterBuffer;
@@ -214,16 +212,17 @@ final class RTCRtpReceiver implements RtpReceiverInterface
      * Gets a list of synchronization sources (SSRCs) that have been active within the last 10 seconds.
      *
      * @return RTCRtpSynchronizationSource[] An array of synchronization source entries.
-     * @throws DateMalformedStringException
-     * @throws DateInvalidOperationException
      */
     public function getSynchronizationSources(): array
     {
-        $cutoff = NetworkTimeProtocol::currentDateTime()->sub(new DateInterval('PT10S'));
+        $cutoff = microtime(true) - 10.0;
         $sources = [];
-        foreach ($this->activeSsrc as $source => $timestamp) {
+        foreach ($this->activeSources as $source => $timestamp) {
             if ($timestamp >= $cutoff) {
-                $sources[] = new RTCRtpSynchronizationSource($timestamp, $source);
+                $sources[] = new RTCRtpSynchronizationSource(
+                    new DateTimeImmutable(sprintf('@%.6F', $timestamp)),
+                    $source,
+                );
             }
         }
         return $sources;
@@ -445,11 +444,11 @@ final class RTCRtpReceiver implements RtpReceiverInterface
      * Tracks which synchronization source (SSRC) was active most recently.
      *
      * @param RtpPacket $packet The incoming RTP packet.
-     * @throws DateMalformedStringException
      */
     private function trackActiveSource(RtpPacket $packet): void
     {
-        $this->activeSsrc[$packet->getSsrc()] = NetworkTimeProtocol::currentDatetime();
+        // Not a date object, for every packet.
+        $this->activeSources[$packet->getSsrc()] = microtime(true);
     }
 
     /**

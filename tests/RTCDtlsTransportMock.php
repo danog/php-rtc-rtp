@@ -53,9 +53,12 @@ class RTCDtlsTransportMock implements RTCRTPDtlsTransportInterface
         // TODO: Implement removeRtpSender() method.
     }
 
+    /** @var list<string> */
+    public array $rtpPackets = [];
+
     public function sendRtp(string $data): void
     {
-        // TODO: Implement sendRtp() method.
+        $this->rtpPackets[] = $data;
     }
 
     public function getRtcpPackets(): array

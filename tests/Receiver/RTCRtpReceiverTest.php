@@ -278,6 +278,8 @@ class RTCRtpReceiverTest extends TestCase
         $this->assertCount(1, $sources);
         $this->assertInstanceOf(RTCRtpSynchronizationSource::class, $sources[0]);
         $this->assertEquals(4028317929, $sources[0]->source);
+        // When its last packet was received.
+        $this->assertEqualsWithDelta(microtime(true), (float) $sources[0]->timestamp->format('U.u'), 5.0);
 
         // Check remote track
         $frame = $frames[0]; // First frame

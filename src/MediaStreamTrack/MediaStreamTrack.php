@@ -54,6 +54,13 @@ abstract class MediaStreamTrack
 
     private bool $stopped = false;
 
+    /**
+     * Handles the frames pushed with {@see self::push()} instead of the consumer, if set.
+     *
+     * @var (\Closure(FrameInterface|EncodedPacket): void)|null
+     */
+    private ?\Closure $sink = null;
+
     /** @var \WeakMap<MediaStreamTrackEndedListener, null> Listeners notified when the track ends. */
     private \WeakMap $endedListeners;
 
@@ -105,6 +112,7 @@ abstract class MediaStreamTrack
         }
 
         $this->stopped = true;
+        $this->sink = null;
         $this->frameQueue->complete();
         $this->notifyEnded();
         /** @var \WeakMap<MediaStreamTrackEndedListener, null> */
@@ -156,12 +164,43 @@ abstract class MediaStreamTrack
     }
 
     /**
+     * Handle the frames pushed with {@see self::push()} with $sink, right away, instead of queueing them for
+     * the consumer; null to queue them again.
+     *
+     * For a consumer that handles every frame as soon as it's pushed anyway, like an RTP sender: it saves
+     * the round trip through the queue, and the fibers waiting on it, for every frame.
+     *
+     * @param (\Closure(FrameInterface|EncodedPacket): void)|null $sink
+     */
+    final public function setSink(?\Closure $sink): void
+    {
+        $this->sink = $sink;
+    }
+
+    /**
+     * Push a frame to the sink (see {@see self::setSink()}), or to the queue of the consumer: then, wait
+     * for it to be consumed.
+     *
+     * @throws \Error If the track was stopped.
+     * @throws \Amp\Pipeline\DisposedException If the consumer went away.
+     */
+    final protected function push(FrameInterface|EncodedPacket $frame): void
+    {
+        if ($this->sink !== null) {
+            ($this->sink)($frame);
+            return;
+        }
+        $this->frameQueue->push($frame);
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function __serialize(): array
     {
         $state = SerializableState::export($this, [
             'frameQueue' => null,
+            'sink' => null,
             // WeakMaps cannot be serialized; snapshot their keys and rebuild on the far side.
             'endedListeners' => ['__uninitialized' => true],
         ]);

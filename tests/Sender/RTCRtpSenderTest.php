@@ -10,6 +10,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
 use Tests\Webrtc\RTP\MediaStreamTrack\AudioStreamTrack;
+use Tests\Webrtc\RTP\MediaStreamTrack\PushingStreamTrack;
 use Tests\Webrtc\RTP\MediaStreamTrack\VideoStreamTrack;
 use Tests\Webrtc\RTP\RTCDtlsTransportMock;
 use Webrtc\AVCodec\AVCodec;
@@ -22,7 +23,11 @@ use Webrtc\RTCP\RtcpRtpfbPacket;
 use Webrtc\RTP\Enum\MediaKind;
 use Webrtc\RTP\HeaderExtension\HeaderExtensionsMap;
 use Webrtc\RTP\MediaStreamTrack\MediaStreamTrack;
+use Webrtc\RTP\RtpPacket;
 use Webrtc\RTP\RtpUtility;
+use Webrtc\RTPParameter\RTCRtpHeaderExtensionParameters;
+use Webrtc\NTP\NetworkTimeProtocol;
+use Webrtc\Codecs\EncodedPacket;
 use Webrtc\RTP\Sender\RTCRtpSender;
 use Webrtc\RTPParameter\RTCRtpCodecParameters;
 use Webrtc\RTPParameter\RTCRtpSendParameters;
@@ -213,6 +218,104 @@ class RTCRtpSenderTest extends TestCase
 //        $this->assertEquals(101, $rtpRtxPacket->getPayloadType());
 //        $this->assertEquals(2345, $rtpRtxPacket->getSsrc());
 //        $this->assertEquals(substr($rtpRtxPacket->getPayload(), 0, 2), pack("n", $rtpPacket->getSequenceNumber()));
+        $sender->stop();
+    }
+
+    /**
+     * Start a VP8 sender for a track that pushes its frames, with the mid and abs-send-time extensions.
+     *
+     * @return array{RTCRtpSender, PushingStreamTrack, HeaderExtensionsMap}
+     */
+    private function startPushingSender(bool $rtx = false): array
+    {
+        $codecs = [new RTCRtpCodecParameters(mimeType: "video/VP8", clockRate: 90000, payloadType: 100)];
+        if ($rtx) {
+            $codecs[] = new RTCRtpCodecParameters(mimeType: "video/rtx", clockRate: 90000, payloadType: 101, parameters: ["apt" => 100]);
+        }
+        $parameters = new RTCRtpSendParameters(
+            codecs: $codecs,
+            headerExtensions: [
+                new RTCRtpHeaderExtensionParameters(1, "urn:ietf:params:rtp-hdrext:sdes:mid"),
+                new RTCRtpHeaderExtensionParameters(2, "http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time"),
+            ],
+            muxId: "0",
+        );
+        $track = new PushingStreamTrack();
+        $sender = new RTCRtpSender($track, $this->transportMock);
+        $sender->setSsrc(1234);
+        $sender->setRtxSsrc(2345);
+        $sender->start($parameters);
+        // Let the sender attach to the track.
+        \Amp\delay(0);
+        $map = new HeaderExtensionsMap();
+        $map->configure($parameters);
+
+        return [$sender, $track, $map];
+    }
+
+    public function testThePushedFramesAreSentRightAway(): void
+    {
+        [$sender, $track, $map] = $this->startPushingSender();
+
+        [$ntpHigh, $ntpLow] = NetworkTimeProtocol::currentNtpTime();
+        $track->send(new EncodedPacket(str_repeat("\x01", 3000), 9000, true));
+        $track->send(new EncodedPacket(str_repeat("\x02", 100), 12000, false));
+
+        $packets = array_map(static fn (string $p): RtpPacket => RtpPacket::decode($p, $map), $this->transportMock->rtpPackets);
+        $this->assertGreaterThan(2, \count($packets), 'the first frame is split into several packets');
+        $first = $packets[0]->getSequenceNumber();
+        $last = \count($packets) - 1;
+        foreach ($packets as $i => $packet) {
+            $this->assertSame(100, $packet->getPayloadType());
+            $this->assertSame(1234, $packet->getSsrc());
+            $this->assertSame(($first + $i) & 0xFFFF, $packet->getSequenceNumber());
+            $this->assertSame("0", $packet->getExtensions()->getMid());
+            // The last packet of each frame is marked.
+            $this->assertSame($i >= $last - 1 ? 1 : 0, $packet->getMarker(), "the marker of packet $i");
+            // A 6.18 fixed point number of seconds, that wraps every 64 seconds.
+            $absSendTime = $packet->getExtensions()->getAbsSendTime();
+            $expected = (($ntpHigh & 0x3F) << 18) | ($ntpLow >> 14);
+            $this->assertLessThan(1 << 17, ($absSendTime - $expected) & 0xFFFFFF, 'the abs-send-time is the time the packet was sent at');
+        }
+        $this->assertSame($packets[0]->getTimestamp(), $packets[$last - 1]->getTimestamp());
+        $this->assertSame(($packets[0]->getTimestamp() + 3000) & 0xFFFFFFFF, $packets[$last]->getTimestamp());
+        $this->assertSame(str_repeat("\x02", 100), substr($packets[$last]->getPayload(), -100));
+        $sender->stop();
+    }
+
+    public function testANackRetransmitsThePacket(): void
+    {
+        [$sender, $track] = $this->startPushingSender();
+        $track->send(new EncodedPacket(str_repeat("\x01", 3000), 9000, true));
+        $sent = $this->transportMock->rtpPackets;
+        $packet = RtpPacket::decode($sent[1]);
+
+        $sender->handleRtcpPacket(new RtcpRtpfbPacket(RtcpConstants::RTCP_RTPFB_NACK, 1, 1234, [$packet->getSequenceNumber(), ($packet->getSequenceNumber() + 1000) & 0xFFFF]));
+
+        // The packet that wasn't sent is ignored.
+        $this->assertSame([...$sent, $sent[1]], $this->transportMock->rtpPackets);
+        $sender->stop();
+    }
+
+    public function testANackRetransmitsThePacketOnTheRtxStream(): void
+    {
+        [$sender, $track, $map] = $this->startPushingSender(rtx: true);
+        $track->send(new EncodedPacket(str_repeat("\x01", 3000), 9000, true));
+        $sent = $this->transportMock->rtpPackets;
+        $packet = RtpPacket::decode($sent[\count($sent) - 1], $map);
+
+        $sender->handleRtcpPacket(new RtcpRtpfbPacket(RtcpConstants::RTCP_RTPFB_NACK, 1, 1234, [$packet->getSequenceNumber()]));
+
+        $this->assertCount(\count($sent) + 1, $this->transportMock->rtpPackets);
+        $rtx = RtpPacket::decode($this->transportMock->rtpPackets[\count($sent)], $map);
+        $this->assertSame(101, $rtx->getPayloadType());
+        $this->assertSame(2345, $rtx->getSsrc());
+        $this->assertSame($packet->getTimestamp(), $rtx->getTimestamp());
+        $this->assertSame(1, $rtx->getMarker());
+        $this->assertSame($packet->getExtensions()->getAbsSendTime(), $rtx->getExtensions()->getAbsSendTime());
+        $this->assertSame("0", $rtx->getExtensions()->getMid());
+        $this->assertSame(pack("n", $packet->getSequenceNumber()).$packet->getPayload(), $rtx->getPayload());
+        $this->assertSame(RtpUtility::wrapRtx($packet, 101, $rtx->getSequenceNumber(), 2345)->encode($map), $this->transportMock->rtpPackets[\count($sent)]);
         $sender->stop();
     }
 
