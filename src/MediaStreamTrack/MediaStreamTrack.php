@@ -11,9 +11,8 @@
 
 namespace Webrtc\RTP\MediaStreamTrack;
 
-use Amp\Cancellation;
-use Amp\Pipeline\ConcurrentIterator;
-use Amp\Pipeline\Queue;
+use Amp\DeferredFuture;
+use Amp\Pipeline\DisposedException;
 use Ramsey\Uuid\Uuid;
 use Webrtc\Codecs\EncodedPacket;
 use Webrtc\AVCodec\Frame\FrameInterface;
@@ -45,21 +44,20 @@ abstract class MediaStreamTrack
      */
     protected string $id;
 
-    /**
-     * A queue to hold frames for the track.
-     *
-     * @var Queue<FrameInterface|EncodedPacket>
-     */
-    protected Queue $frameQueue;
-
     private bool $stopped = false;
 
     /**
-     * Handles the frames pushed with {@see self::push()} instead of the consumer, if set.
+     * Takes the frames pushed with {@see self::push()}, see {@see self::setSink()}.
      *
-     * @var (\Closure(FrameInterface|EncodedPacket): void)|null
+     * Held weakly, not to keep its owner (an RTP sender) alive; not serialized: the sink attaches
+     * itself again.
+     *
+     * @var \WeakReference<MediaStreamTrackSink>|null
      */
-    private ?\Closure $sink = null;
+    private ?\WeakReference $sink = null;
+
+    /** Completed when a sink is attached (or the track stops), for a producer waiting for one. */
+    private ?DeferredFuture $sinkAttached = null;
 
     /** @var \WeakMap<MediaStreamTrackEndedListener, null> Listeners notified when the track ends. */
     private \WeakMap $endedListeners;
@@ -72,8 +70,6 @@ abstract class MediaStreamTrack
     public function __construct(MediaKind $kind, ?string $id = null)
     {
         $this->id = $id ?? Uuid::uuid4()->toString();
-        /** @var Queue<FrameInterface|EncodedPacket> */
-        $this->frameQueue = new Queue();
         $this->kind = $kind;
         /** @var \WeakMap<MediaStreamTrackEndedListener, null> */
         $this->endedListeners = new \WeakMap();
@@ -113,7 +109,7 @@ abstract class MediaStreamTrack
 
         $this->stopped = true;
         $this->sink = null;
-        $this->frameQueue->complete();
+        $this->wakeProducer();
         $this->notifyEnded();
         /** @var \WeakMap<MediaStreamTrackEndedListener, null> */
         $this->endedListeners = new \WeakMap();
@@ -152,45 +148,57 @@ abstract class MediaStreamTrack
     }
 
     /**
-     * Receives and returns the next frame or packet from the track.
+     * Hand the frames pushed with {@see self::push()} to $sink, right away, as they are pushed (or stop
+     * handing them to the current one, with null), like an RTP sender does.
      *
-     * This is an abstract method that subclasses must implement.
-     * It handles the retrieval or generation of the next frame or packet.
-     *
-     * @return ConcurrentIterator<FrameInterface|EncodedPacket> The next frame or packet
+     * The sink is held weakly: the producer is told that its consumer went away once it's collected.
      */
-    final public function getConsumer(): ConcurrentIterator {
-        return $this->frameQueue->iterate();
-    }
-
-    /**
-     * Handle the frames pushed with {@see self::push()} with $sink, right away, instead of queueing them for
-     * the consumer; null to queue them again.
-     *
-     * For a consumer that handles every frame as soon as it's pushed anyway, like an RTP sender: it saves
-     * the round trip through the queue, and the fibers waiting on it, for every frame.
-     *
-     * @param (\Closure(FrameInterface|EncodedPacket): void)|null $sink
-     */
-    final public function setSink(?\Closure $sink): void
+    final public function setSink(?MediaStreamTrackSink $sink): void
     {
-        $this->sink = $sink;
+        $this->sink = $sink === null ? null : \WeakReference::create($sink);
+        if ($sink !== null) {
+            $this->wakeProducer();
+        }
     }
 
     /**
-     * Push a frame to the sink (see {@see self::setSink()}), or to the queue of the consumer: then, wait
-     * for it to be consumed.
+     * Whether a sink is attached, see {@see self::setSink()}.
+     */
+    final protected function hasSink(): bool
+    {
+        return $this->sink?->get() !== null;
+    }
+
+    /**
+     * Hand a frame to the sink (see {@see self::setSink()}), waiting for one to be attached if there's none.
      *
-     * @throws \Error If the track was stopped.
-     * @throws \Amp\Pipeline\DisposedException If the consumer went away.
+     * @throws DisposedException If the track was stopped, or its sink went away or takes no more frames.
      */
     final protected function push(FrameInterface|EncodedPacket $frame): void
     {
-        if ($this->sink !== null) {
-            ($this->sink)($frame);
-            return;
+        $reference = $this->sink;
+        while ($reference === null) {
+            if ($this->stopped) {
+                throw new DisposedException();
+            }
+            $this->sinkAttached ??= new DeferredFuture();
+            $this->sinkAttached->getFuture()->await();
+            $reference = $this->sink;
         }
-        $this->frameQueue->push($frame);
+        $sink = $reference->get();
+        if ($sink === null || !$sink->onFrame($frame)) {
+            $this->sink = null;
+            throw new DisposedException();
+        }
+    }
+
+    private function wakeProducer(): void
+    {
+        if ($this->sinkAttached !== null) {
+            $deferred = $this->sinkAttached;
+            $this->sinkAttached = null;
+            $deferred->complete();
+        }
     }
 
     /**
@@ -199,8 +207,8 @@ abstract class MediaStreamTrack
     public function __serialize(): array
     {
         $state = SerializableState::export($this, [
-            'frameQueue' => null,
             'sink' => null,
+            'sinkAttached' => null,
             // WeakMaps cannot be serialized; snapshot their keys and rebuild on the far side.
             'endedListeners' => ['__uninitialized' => true],
         ]);
@@ -217,14 +225,7 @@ abstract class MediaStreamTrack
         /** @var list<MediaStreamTrackEndedListener> $endedListeners */
         $endedListeners = $data['__endedListeners'] ?? [];
         unset($data['__endedListeners']);
-        foreach (array_keys($data) as $key) {
-            if (str_ends_with($key, "\0frameQueue")) {
-                unset($data[$key]);
-            }
-        }
         SerializableState::import($this, $data);
-        /** @var Queue<FrameInterface|EncodedPacket> */
-        $this->frameQueue = new Queue();
         /** @var \WeakMap<MediaStreamTrackEndedListener, null> */
         $this->endedListeners = SerializableState::listToWeakMap($endedListeners);
     }

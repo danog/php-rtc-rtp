@@ -170,7 +170,7 @@ final class RTCRtpReceiver implements RtpReceiverInterface
         $this->frameCryptor = $frameCryptor;
     }
 
-    public function getTrack(): ?MediaStreamTrack
+    public function getTrack(): ?RemoteStreamTrack
     {
         return $this->track;
     }

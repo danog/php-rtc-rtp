@@ -42,9 +42,11 @@ use Webrtc\RTP\RtpComponentLogger;
 use Webrtc\RTP\HeaderExtension\HeaderExtensions;
 use Webrtc\RTP\HeaderExtension\HeaderExtensionsMap;
 use Webrtc\RTP\MediaStreamTrack\MediaStreamTrack;
+use Webrtc\RTP\MediaStreamTrack\MediaStreamTrackSink;
 use Webrtc\RTP\RTCRTPDtlsTransportInterface;
 use Webrtc\RTP\RtpConstants;
 use Webrtc\RTP\RtpUtility;
+use Webrtc\RTP\TransportSequenceNumbers;
 use Webrtc\RTPParameter\RTCRtpCodecParameters;
 use Webrtc\RTPParameter\RTCRtpSendParameters;
 use Webrtc\Stats\enum\StatType;
@@ -64,7 +66,7 @@ use Webrtc\Stats\RTCStatsReport;
  * - Collecting and reporting statistics
  * - Managing the media track and transport
  */
-final class RTCRtpSender implements RtpSenderInterface
+final class RTCRtpSender implements RtpSenderInterface, MediaStreamTrackSink
 {
     /** @var float Smoothing factor for RTT calculations */
     private const RTT_ALPHA = 0.85;
@@ -109,8 +111,13 @@ final class RTCRtpSender implements RtpSenderInterface
     /** @var string|null The media ID (mid) for this sender */
     private ?string $mid = null;
 
-    /** @var array<int, string> The last RTP packets sent, for retransmissions, by sequence number modulo {@see RtpConstants::RTP_HISTORY_SIZE}. */
-    private array $sentPackets = [];
+    /**
+     * The last RTP packets sent, for retransmissions, by sequence number modulo {@see RtpConstants::RTP_HISTORY_SIZE}:
+     * each with the offset of its transport-wide sequence number (null if none), to renumber it.
+     *
+     * @var array<int, array{string, ?int}>
+     */
+    private array $sentRtpPackets = [];
 
     /** @var RTCStatsReport Statistics for this sender */
     private RTCStatsReport $stats;
@@ -254,6 +261,10 @@ final class RTCRtpSender implements RtpSenderInterface
      */
     public function replaceTrack(?MediaStreamTrack $track): void
     {
+        if ($this->started && $this->track !== $track) {
+            $this->track?->setSink(null);
+            $track?->setSink($this);
+        }
         $this->track = $track;
         $this->trackId = $track ? $track->getId() : Uuid::uuid4()->toString();
     }
@@ -379,53 +390,30 @@ final class RTCRtpSender implements RtpSenderInterface
     }
 
     /**
-     * Drain the track onto the wire.
+     * Send the frames of the track, see {@see self::onFrame()}.
      *
      * Restarted only as the first-class callable `$this->drainRtp(...)` handed to
-     * EventLoop::queue(), including when unserialize re-queues it. That callable captures this
-     * method's private scope, so the event loop can run it while it stays private.
+     * EventLoop::queue(), including when unserialize re-queues it (once the track was unserialized too).
      */
     private function drainRtp(): void
     {
-        // Capture the track once. The sender may be stopped (or its track detached)
-        // between queueing and execution, in which case there is nothing to send yet.
-        $track = $this->track;
-        if ($track === null || !$this->started) {
+        // The sender may be stopped (or its track detached) between queueing and execution, in which
+        // case there is nothing to send yet.
+        if ($this->track === null || !$this->started) {
             return;
         }
-        // Park the send loop on the track consumer, not on $this. Iterating inside an instance
-        // method keeps $this on the parked fiber's stack, so the event loop would pin this sender
-        // forever and an unset()+gc could never reclaim it. Hold the consumer and a weak reference
-        // instead; stop() (also reached from __destruct) completes the consumer, so the fiber
-        // unwinds once the owner is collected.
-        $weak = \WeakReference::create($this);
-        $consumer = $track->getConsumer();
-        // The frames the track pushes with MediaStreamTrack::push() are sent right away, by the fiber
-        // pushing them, without a round trip through the consumer.
-        $track->setSink(static function (FrameInterface|EncodedPacket $data) use ($weak, $track): void {
-            $self = $weak->get();
-            if ($self === null || !$self->consumeFrame($data)) {
-                // Queue them again: the loop below stops at the next one, letting the track know.
-                $track->setSink(null);
-            }
-        });
-        EventLoop::queue(static function () use ($weak, $consumer): void {
-            foreach ($consumer as $data) {
-                $self = $weak->get();
-                if ($self === null || !$self->consumeFrame($data)) {
-                    return;
-                }
-                unset($self);
-            }
-        });
+        // Held weakly by the track: an unset()+gc can reclaim the sender, stop() (also reached from
+        // __destruct) stops the track.
+        $this->track->setSink($this);
     }
 
     /**
-     * Send a frame of the track.
+     * Send a frame of the track, as soon as it pushes it.
      *
      * @return bool False if the sender stopped sending (it was stopped, its track was detached, or it gave up).
      */
-    private function consumeFrame(FrameInterface|EncodedPacket $data): bool
+    #[\Override]
+    public function onFrame(FrameInterface|EncodedPacket $frame): bool
     {
         // The sender may have been stopped or its track detached while iterating: stop pushing media
         // onto the wire.
@@ -446,7 +434,7 @@ final class RTCRtpSender implements RtpSenderInterface
         // so give up after a bounded number of consecutive failures instead of looping forever —
         // the higher layer (which watches the connection) can then renegotiate or end the call.
         try {
-            $this->sendEncodedFrame($data);
+            $this->sendEncodedFrame($frame);
             $this->consecutiveSendFailures = 0;
         } catch (Throwable $e) {
             $this->logger?->error('Failed to send an outgoing RTP frame: '.$e->getMessage());
@@ -540,13 +528,22 @@ final class RTCRtpSender implements RtpSenderInterface
             // report activity.
             $extensions->setAudioLevel([$level <= self::SILENCE_LEVEL_DBOV, $level]);
         }
-        [$extensionProfile, $extensionValue] = $this->headerExtensionsMap->set($extensions);
+        $transport = $this->transport instanceof TransportSequenceNumbers ? $this->transport : null;
+        [$extensionProfile, $extensionValue, $transportSequenceNumberOffset] = $this->headerExtensionsMap->setForFrame($extensions, $transport !== null);
         // Version 2, no padding nor CSRCs.
         $firstByte = 0x80;
         $extensionHeader = '';
         if ($extensionValue !== '') {
             $firstByte |= 0x10;
             $extensionHeader = pack('n2', $extensionProfile, intdiv(strlen($extensionValue), 4)).$extensionValue;
+        }
+        // Every packet has its own transport-wide sequence number, in between.
+        $afterTransportSequenceNumber = '';
+        if ($transportSequenceNumberOffset !== null) {
+            $afterTransportSequenceNumber = substr($extensionHeader, 4 + $transportSequenceNumberOffset + 2);
+            $extensionHeader = substr($extensionHeader, 0, 4 + $transportSequenceNumberOffset);
+            // Of the whole packet.
+            $transportSequenceNumberOffset += 12 + 4;
         }
         $timestamp = ($this->orgTimestamp + $timestamp) & 0xFFFFFFFF;
         $last = count($payloads) - 1;
@@ -558,9 +555,13 @@ final class RTCRtpSender implements RtpSenderInterface
                 $this->sequenceNumber,
                 $timestamp,
                 $this->ssrc,
-            ).$extensionHeader.$payload;
+            ).$extensionHeader;
+            if ($transport !== null && $transportSequenceNumberOffset !== null) {
+                $packet .= pack('n', $transport->nextTransportSequenceNumber()).$afterTransportSequenceNumber;
+            }
+            $packet .= $payload;
             $this->logger?->debug("Sending packet: seq={$this->sequenceNumber}, ts=$timestamp, ".strlen($packet).' bytes');
-            $this->sentPackets[$this->sequenceNumber % RtpConstants::RTP_HISTORY_SIZE] = $packet;
+            $this->sentRtpPackets[$this->sequenceNumber % RtpConstants::RTP_HISTORY_SIZE] = [$packet, $transportSequenceNumberOffset];
             $this->transport->sendRtp($packet);
             $this->octetCount += strlen($payload);
             $this->packetCount++;
@@ -754,9 +755,13 @@ final class RTCRtpSender implements RtpSenderInterface
      */
     public function retransmit(int $sequenceNumber): void
     {
-        $packet = $this->sentPackets[$sequenceNumber % RtpConstants::RTP_HISTORY_SIZE] ?? null;
+        [$packet, $transportSequenceNumberOffset] = $this->sentRtpPackets[$sequenceNumber % RtpConstants::RTP_HISTORY_SIZE] ?? [null, null];
         if ($packet === null || ((ord($packet[2]) << 8) | ord($packet[3])) !== $sequenceNumber) {
             return;
+        }
+        // A retransmission is another packet on the transport (it's in the same place in an RTX one).
+        if ($transportSequenceNumberOffset !== null && $this->transport instanceof TransportSequenceNumbers) {
+            $packet = substr_replace($packet, pack('n', $this->transport->nextTransportSequenceNumber()), $transportSequenceNumberOffset, 2);
         }
         if ($this->rtxPayloadType !== null) {
             // RFC 4588: the same header (and extensions) on the RTX stream, the payload prefixed by

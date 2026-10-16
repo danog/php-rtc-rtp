@@ -11,11 +11,10 @@
 
 namespace Webrtc\RTP\MediaStreamTrack;
 
-use Amp\Cancellation;
 use Amp\Pipeline\ConcurrentIterator;
+use Amp\Pipeline\DisposedException;
 use Amp\Pipeline\Queue;
-use SplQueue;
-use Webrtc\AVCodec\Data\Packet;
+use Revolt\EventLoop;
 use Webrtc\Codecs\EncodedPacket;
 use Webrtc\AVCodec\Frame\FrameInterface;
 use Webrtc\RTP\Enum\MediaKind;
@@ -30,14 +29,45 @@ use Webrtc\RTP\Enum\MediaKind;
 final class RemoteStreamTrack extends MediaStreamTrack
 {
     /**
-     * Adds a frame to the frame queue.
+     * The received frames, for the consumer of the track (see {@see self::getConsumer()}).
      *
-     * This method includes a frame that will be processed later when `receiveData()` is called.
+     * @var Queue<FrameInterface|EncodedPacket>
+     */
+    private Queue $frameQueue;
+
+    public function __construct(MediaKind $kind, ?string $id = null)
+    {
+        parent::__construct($kind, $id);
+        /** @var Queue<FrameInterface|EncodedPacket> */
+        $this->frameQueue = new Queue();
+    }
+
+    /**
+     * The received frames.
+     *
+     * @return ConcurrentIterator<FrameInterface|EncodedPacket>
+     */
+    public function getConsumer(): ConcurrentIterator
+    {
+        return $this->frameQueue->iterate();
+    }
+
+    /**
+     * Hand a received frame to the consumer, waiting for it to be consumed: to the sink instead, if
+     * one is attached (when the track is sent by an RTP sender too, see {@see self::setSink()}).
      *
      * @param FrameInterface|EncodedPacket $frame The frame to add to the queue.
      */
     public function queueFrame(FrameInterface|EncodedPacket $frame): void
     {
+        if ($this->hasSink()) {
+            try {
+                $this->push($frame);
+            } catch (DisposedException) {
+                // The sender stopped: like a consumer that doesn't read the frames any more.
+            }
+            return;
+        }
         $this->frameQueue->push($frame);
     }
 
@@ -50,6 +80,43 @@ final class RemoteStreamTrack extends MediaStreamTrack
      */
     public function queueLastFrame(FrameInterface|EncodedPacket $frame): void
     {
+        if ($this->hasSink()) {
+            EventLoop::queue($this->queueFrame(...), $frame);
+            return;
+        }
         $this->frameQueue->pushAsync($frame)->ignore();
+    }
+
+    #[\Override]
+    public function stop(): void
+    {
+        if (!$this->isEnded()) {
+            $this->frameQueue->complete();
+        }
+        parent::stop();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    #[\Override]
+    public function __serialize(): array
+    {
+        $state = parent::__serialize();
+        // The frames waiting to be consumed are not saved.
+        unset($state[self::class."\0frameQueue"]);
+
+        return $state;
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    #[\Override]
+    public function __unserialize(array $data): void
+    {
+        parent::__unserialize($data);
+        /** @var Queue<FrameInterface|EncodedPacket> */
+        $this->frameQueue = new Queue();
     }
 }

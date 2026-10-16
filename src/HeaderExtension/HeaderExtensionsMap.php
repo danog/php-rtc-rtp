@@ -125,6 +125,41 @@ final class HeaderExtensionsMap
      */
     public function set(HeaderExtensions $values): array
     {
+        return RtpUtility::packHeaderExtensions($this->toList($values));
+    }
+
+    /**
+     * Packs the header extensions of all packets of a frame, which only differ in their transport-wide
+     * sequence number: it's left to fill in, at the returned offset of the extension value.
+     *
+     * @param HeaderExtensions $values The extension values to encode, but the transport-wide sequence number.
+     * @param bool $transportSequenceNumber Whether to number the packets, if negotiated.
+     * @return array{0: int, 1: string, 2: ?int} Encoded RTP header extensions as (profile, value), and the
+     *                                         offset of the transport-wide sequence number (null if none).
+     */
+    public function setForFrame(HeaderExtensions $values, bool $transportSequenceNumber): array
+    {
+        $extensions = $this->toList($values);
+        $id = $this->ids->getTransportSequenceNumber();
+        if (!$transportSequenceNumber || $id === null) {
+            return [...RtpUtility::packHeaderExtensions($extensions), null];
+        }
+        // The last one, so it ends right before the padding.
+        $extensions[] = [$id, "\0\0"];
+        [$profile, $value] = RtpUtility::packHeaderExtensions($extensions);
+        $length = 0;
+        foreach ($extensions as [, $xValue]) {
+            $length += ($profile === 0xBEDE ? 1 : 2) + strlen($xValue);
+        }
+
+        return [$profile, $value, $length - 2];
+    }
+
+    /**
+     * @return list<array{0: int, 1: string}> The negotiated extensions, by ID.
+     */
+    private function toList(HeaderExtensions $values): array
+    {
         $extensions = [];
 
         if (!is_null($values->getMid()) && !is_null($this->ids->getMid())) {
@@ -151,6 +186,6 @@ final class HeaderExtensionsMap
             $extensions[] = [$this->ids->getTransportSequenceNumber(), pack("n", $values->getTransportSequenceNumber())];
         }
 
-        return RtpUtility::packHeaderExtensions($extensions);
+        return $extensions;
     }
 }

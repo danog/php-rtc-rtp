@@ -13,6 +13,7 @@ use Tests\Webrtc\RTP\MediaStreamTrack\AudioStreamTrack;
 use Tests\Webrtc\RTP\MediaStreamTrack\PushingStreamTrack;
 use Tests\Webrtc\RTP\MediaStreamTrack\VideoStreamTrack;
 use Tests\Webrtc\RTP\RTCDtlsTransportMock;
+use Tests\Webrtc\RTP\NumberingTransportMock;
 use Webrtc\AVCodec\AVCodec;
 use Webrtc\Exception\InvalidArgumentException;
 use Webrtc\RTCP\RtcpConstants;
@@ -226,9 +227,12 @@ class RTCRtpSenderTest extends TestCase
      *
      * @return array{RTCRtpSender, PushingStreamTrack, HeaderExtensionsMap}
      */
-    private function startPushingSender(bool $rtx = false): array
+    private function startPushingSender(bool $rtx = false, ?RTCDtlsTransportMock $transport = null, MediaKind $kind = MediaKind::Video): array
     {
-        $codecs = [new RTCRtpCodecParameters(mimeType: "video/VP8", clockRate: 90000, payloadType: 100)];
+        $transport ??= $this->transportMock;
+        $codecs = [$kind === MediaKind::Video
+            ? new RTCRtpCodecParameters(mimeType: "video/VP8", clockRate: 90000, payloadType: 100)
+            : new RTCRtpCodecParameters(mimeType: "audio/opus", clockRate: 48000, channels: 2, payloadType: 111)];
         if ($rtx) {
             $codecs[] = new RTCRtpCodecParameters(mimeType: "video/rtx", clockRate: 90000, payloadType: 101, parameters: ["apt" => 100]);
         }
@@ -237,11 +241,12 @@ class RTCRtpSenderTest extends TestCase
             headerExtensions: [
                 new RTCRtpHeaderExtensionParameters(1, "urn:ietf:params:rtp-hdrext:sdes:mid"),
                 new RTCRtpHeaderExtensionParameters(2, "http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time"),
+                new RTCRtpHeaderExtensionParameters(3, "http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01"),
             ],
             muxId: "0",
         );
-        $track = new PushingStreamTrack();
-        $sender = new RTCRtpSender($track, $this->transportMock);
+        $track = new PushingStreamTrack($kind);
+        $sender = new RTCRtpSender($track, $transport);
         $sender->setSsrc(1234);
         $sender->setRtxSsrc(2345);
         $sender->start($parameters);
@@ -316,6 +321,63 @@ class RTCRtpSenderTest extends TestCase
         $this->assertSame("0", $rtx->getExtensions()->getMid());
         $this->assertSame(pack("n", $packet->getSequenceNumber()).$packet->getPayload(), $rtx->getPayload());
         $this->assertSame(RtpUtility::wrapRtx($packet, 101, $rtx->getSequenceNumber(), 2345)->encode($map), $this->transportMock->rtpPackets[\count($sent)]);
+        $sender->stop();
+    }
+
+    public function testThePacketsAreNumberedOnTheTransport(): void
+    {
+        $transport = new NumberingTransportMock();
+        [$video, $videoTrack, $map] = $this->startPushingSender(transport: $transport);
+        [$audio, $audioTrack] = $this->startPushingSender(transport: $transport, kind: MediaKind::Audio);
+
+        $videoTrack->send(new EncodedPacket(str_repeat("\x01", 3000), 9000, true));
+        $audioTrack->send(new EncodedPacket("\xFC\x01", 960));
+        $videoTrack->send(new EncodedPacket(str_repeat("\x02", 100), 12000, false));
+
+        $numbers = [];
+        foreach ($transport->rtpPackets as $data) {
+            $packet = RtpPacket::decode($data, $map);
+            $numbers[] = $packet->getExtensions()->getTransportSequenceNumber();
+            // The other extensions are still there.
+            $this->assertSame("0", $packet->getExtensions()->getMid());
+            $this->assertNotNull($packet->getExtensions()->getAbsSendTime());
+        }
+        // One sequence for all of the packets sent on the transport, wrapping around.
+        $expected = [];
+        for ($i = 0; $i < \count($numbers); $i++) {
+            $expected[] = (65534 + $i) & 0xFFFF;
+        }
+        $this->assertSame($expected, $numbers);
+        $video->stop();
+        $audio->stop();
+    }
+
+    public function testARetransmissionIsNumberedAgain(): void
+    {
+        foreach ([false, true] as $rtx) {
+            $transport = new NumberingTransportMock();
+            [$sender, $track, $map] = $this->startPushingSender(rtx: $rtx, transport: $transport);
+            $track->send(new EncodedPacket(str_repeat("\x01", 3000), 9000, true));
+            $sent = $transport->rtpPackets;
+            $packet = RtpPacket::decode($sent[0], $map);
+
+            $sender->handleRtcpPacket(new RtcpRtpfbPacket(RtcpConstants::RTCP_RTPFB_NACK, 1, 1234, [$packet->getSequenceNumber()]));
+
+            $retransmission = RtpPacket::decode($transport->rtpPackets[\count($sent)], $map);
+            $this->assertSame($transport->transportSequenceNumber, $retransmission->getExtensions()->getTransportSequenceNumber());
+            $this->assertNotSame($packet->getExtensions()->getTransportSequenceNumber(), $retransmission->getExtensions()->getTransportSequenceNumber());
+            $this->assertSame($rtx ? pack("n", $packet->getSequenceNumber()).$packet->getPayload() : $packet->getPayload(), $retransmission->getPayload());
+            $sender->stop();
+        }
+    }
+
+    public function testThePacketsAreNotNumberedIfTheTransportDoesNot(): void
+    {
+        [$sender, $track, $map] = $this->startPushingSender();
+        $track->send(new EncodedPacket(str_repeat("\x01", 100), 9000, true));
+
+        $packet = RtpPacket::decode($this->transportMock->rtpPackets[0], $map);
+        $this->assertNull($packet->getExtensions()->getTransportSequenceNumber());
         $sender->stop();
     }
 
