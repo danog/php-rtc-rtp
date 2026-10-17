@@ -93,6 +93,7 @@ class RTCRtpReceiverTest extends TestCase
             [
                 new RTCRtpHeaderExtensionCapability("urn:ietf:params:rtp-hdrext:sdes:mid"),
                 new RTCRtpHeaderExtensionCapability("urn:ietf:params:rtp-hdrext:ssrc-audio-level"),
+                new RTCRtpHeaderExtensionCapability("http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01"),
             ],
             $audioCapabilities->headerExtensions
         );
@@ -135,6 +136,7 @@ class RTCRtpReceiverTest extends TestCase
             [
                 new RTCRtpHeaderExtensionCapability("urn:ietf:params:rtp-hdrext:sdes:mid"),
                 new RTCRtpHeaderExtensionCapability("http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time"),
+                new RTCRtpHeaderExtensionCapability("http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01"),
             ],
             $videoCapabilities->headerExtensions
         );
