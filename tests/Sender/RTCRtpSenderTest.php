@@ -288,6 +288,41 @@ class RTCRtpSenderTest extends TestCase
         $sender->stop();
     }
 
+    /**
+     * A frame the frame cryptor can't send is dropped, without counting as a failure to send: the sender stopped for
+     * good after 100 of them in a row (an E2E conference epoch in which no H.264 frame can be encrypted).
+     */
+    public function testFramesTheCryptorDropsDoNotStopTheSender(): void
+    {
+        [$sender, $track, $map] = $this->startPushingSender();
+        $sender->setFrameCryptor(new class implements \Webrtc\RTP\Crypto\FrameCryptorInterface {
+            public int $dropped = 0;
+            public function encryptFrame(MediaKind $kind, int $ssrc, string $frame): string
+            {
+                if ($frame[0] === "\x01") {
+                    $this->dropped++;
+                    throw new \Webrtc\RTP\Crypto\DropFrameException('cannot send it');
+                }
+                return $frame;
+            }
+            public function decryptFrame(MediaKind $kind, int $ssrc, string $frame): string
+            {
+                return $frame;
+            }
+        });
+
+        for ($i = 0; $i < 150; $i++) {
+            $track->send(new EncodedPacket(str_repeat("\x01", 100), 9000 + $i * 3000, false));
+        }
+        $this->assertSame([], $this->transportMock->rtpPackets);
+        $track->send(new EncodedPacket(str_repeat("\x02", 100), 9000 + 150 * 3000, false));
+
+        $packets = array_map(static fn (string $p): RtpPacket => RtpPacket::decode($p, $map), $this->transportMock->rtpPackets);
+        $this->assertCount(1, $packets);
+        $this->assertSame(str_repeat("\x02", 100), substr($packets[0]->getPayload(), -100));
+        $sender->stop();
+    }
+
     public function testANackRetransmitsThePacket(): void
     {
         [$sender, $track] = $this->startPushingSender();

@@ -25,6 +25,8 @@ interface FrameCryptorInterface
      * @param string    $frame The full encoded frame.
      *
      * @return string The bytes to fragment and send in place of the frame.
+     *
+     * @throws DropFrameException If the frame can't be sent: it's dropped.
      */
     public function encryptFrame(MediaKind $kind, int $ssrc, string $frame): string;
 

@@ -464,8 +464,15 @@ final class RTCRtpSender implements RtpSenderInterface, MediaStreamTrackSink
                 // the clear and any WebRTC receiver depacketizes it normally (its depacketizer-to-decoder
                 // transformer then decrypts the reassembled frame). The cryptor is responsible for
                 // leaving whatever the packetizer/depacketizer parse of the bitstream unencrypted.
+                try {
+                    $encrypted = $this->frameCryptor->encryptFrame($this->kind, $this->ssrc, $data->getData());
+                } catch (\Webrtc\RTP\Crypto\DropFrameException $e) {
+                    // Not a failure to send: the next frames may go (a frame transformer dropping a frame, too).
+                    $this->logger?->debug('Dropped an outgoing frame: '.$e->getMessage());
+                    return;
+                }
                 $data = new EncodedPacket(
-                    $this->frameCryptor->encryptFrame($this->kind, $this->ssrc, $data->getData()),
+                    $encrypted,
                     $data->getTimestamp(),
                     $data->isKeyframe(),
                     $audioLevel,
