@@ -310,40 +310,46 @@ class RTCRtpReceiverTest extends TestCase
 
     public function testRtpMissingVideoPacket()
     {
-        if (!AVCodec::isAvailable()) {
-            self::markTestSkipped(
-                'Transcoding needs the FFI extension and an FFmpeg build matching the bundled headers.'
-            );
-        }
-
-        AVCodec::init(true);
         $this->transportMock->resetRtcpPackets();
         $receiver = new RTCRtpReceiver(MediaKind::Video, $this->transportMock);
-        $receiver->setTrack(new RemoteStreamTrack(MediaKind::Video));
+        $track = new RemoteStreamTrack(MediaKind::Video);
+        $sink = new class implements MediaStreamTrackSink {
+            public function onFrame(FrameInterface|EncodedPacket $frame): bool
+            {
+                return true;
+            }
+        };
+        $track->setSink($sink);
+        $receiver->setTrack($track);
+        $receiver->setRawMode(true);
         $receiver->setRtcpSsrc(1234);
-        $rtpParametersVideo = $this->getRTCRtpReceiveParametersVideo();
-        $receiver->start($rtpParametersVideo);
+        $receiver->start($this->getRTCRtpReceiveParametersVideo());
 
-        // Generate some packets
-        $packets = $this->createRtpVideoPackets($this->getVp8Codec(), 2);
-
-        // Receive RTP with a gap the jitter buffer can't hold (a smaller one is waited for, a second at most)
+        // Two one-packet VP8 frames, with a gap between them the jitter buffer can't hold (a smaller one is waited
+        // for, a second at most). The first frame is complete (marker bit), and leaves the buffer at once.
         $capacity = RTCRtpReceiver::VIDEO_JITTER_CAPACITY;
-        $packets[1]->setSequenceNumber($capacity);
-        $receiver->handleRtpPacket($packets[0], 0);
-        $receiver->handleRtpPacket($packets[1], 0);
+        foreach ([0, $capacity + 1] as $i => $seq) {
+            $packet = new RtpPacket();
+            $packet->setSsrc(1234);
+            $packet->setPayloadType(100);
+            $packet->setSequenceNumber($seq);
+            $packet->setTimestamp(3000 * $i);
+            $packet->setMarker(1);
+            $packet->setPayload("\x10frame");
+            $receiver->handleRtpPacket($packet, 0);
+        }
 
         $nacks = RtcpPacket::decode($this->transportMock->getRtcpPackets()[0]);
         $pli = RtcpPacket::decode($this->transportMock->getRtcpPackets()[1]);
 
         // Check NACK was triggered
-        $lostPackets = range(1, $capacity - 1);
-        $this->assertEquals([1234, $lostPackets], [$nacks[0]->getSsrc(), $nacks[0]->getLost()]);
+        $this->assertEquals([1234, range(1, $capacity)], [$nacks[0]->getSsrc(), $nacks[0]->getLost()]);
 
         // Check PLI was triggered
         $this->assertEquals(1234, $pli[0]->getSsrc());
 
         $receiver->stop();
+        unset($sink);
     }
 
     public function testRtpEmptyVideoPacket()
