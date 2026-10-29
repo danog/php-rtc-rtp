@@ -186,7 +186,8 @@ class RTCRtpReceiverTest extends TestCase
         $receiver->setTrack($track);
         $receiver->setRawMode(true);
         $receiver->setRtcpSsrc(1234);
-        $receiver->start($this->getRTCRtpReceiveParametersAudio());
+        $parameters = $this->getRTCRtpReceiveParametersAudio();
+        $receiver->start($parameters);
 
         // Fewer frames than the jitter buffer holds back before delivering any.
         for ($i = 0; $i < 2; $i++) {
@@ -204,6 +205,10 @@ class RTCRtpReceiverTest extends TestCase
             $frames[] = $frame;
         }
         $this->assertCount(2, $frames);
+        // Raw frames carry the codec of their payload type, which a sender can switch on the same SSRC.
+        foreach ($frames as $frame) {
+            $this->assertSame($parameters->codecs[0]->mimeType, $frame->getMimeType());
+        }
     }
 
     public function testStartReconfiguresRunningReceiver(): void

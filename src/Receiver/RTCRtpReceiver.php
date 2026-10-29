@@ -760,7 +760,8 @@ final class RTCRtpReceiver implements RtpReceiverInterface
                 $this->logger?->debug('x dropping a frame that could not be reassembled: '.$e->getMessage());
                 return;
             }
-            $packet = new EncodedPacket($data, $encodedFrame->getTimestamp());
+            // With the codec of its payload type: a sender can switch codec without changing SSRC.
+            $packet = new EncodedPacket($data, $encodedFrame->getTimestamp(), mimeType: $codec->mimeType);
             // When stopping, the frames are only queued: waiting for them to be read would block until someone does.
             $last ? $this->track?->queueLastFrame($packet) : $this->track?->queueFrame($packet);
             return;
