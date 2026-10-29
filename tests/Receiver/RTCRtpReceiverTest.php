@@ -325,17 +325,19 @@ class RTCRtpReceiverTest extends TestCase
         $receiver->start($rtpParametersVideo);
 
         // Generate some packets
-        $packets = $this->createRtpVideoPackets($this->getVp8Codec(), 129);
+        $packets = $this->createRtpVideoPackets($this->getVp8Codec(), 2);
 
-        // Receive RTP with a gap
+        // Receive RTP with a gap the jitter buffer can't hold (a smaller one is waited for, a second at most)
+        $capacity = RTCRtpReceiver::VIDEO_JITTER_CAPACITY;
+        $packets[1]->setSequenceNumber($capacity);
         $receiver->handleRtpPacket($packets[0], 0);
-        $receiver->handleRtpPacket($packets[128], 0);
+        $receiver->handleRtpPacket($packets[1], 0);
 
         $nacks = RtcpPacket::decode($this->transportMock->getRtcpPackets()[0]);
         $pli = RtcpPacket::decode($this->transportMock->getRtcpPackets()[1]);
 
         // Check NACK was triggered
-        $lostPackets = range(1, 127);
+        $lostPackets = range(1, $capacity - 1);
         $this->assertEquals([1234, $lostPackets], [$nacks[0]->getSsrc(), $nacks[0]->getLost()]);
 
         // Check PLI was triggered

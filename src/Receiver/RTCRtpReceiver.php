@@ -66,7 +66,7 @@ final class RTCRtpReceiver implements RtpReceiverInterface
      * How many packets the video jitter buffer holds: a whole keyframe (which can take more than a hundred packets,
      * sent at once) plus what arrives while its lost packets are retransmitted, or it overflows and drops the frame.
      */
-    private const VIDEO_JITTER_CAPACITY = 512;
+    public const VIDEO_JITTER_CAPACITY = 512;
 
     /**
      * Minimum bandwidth (bps) we ever advertise in REMB. A receive-and-record endpoint is not
