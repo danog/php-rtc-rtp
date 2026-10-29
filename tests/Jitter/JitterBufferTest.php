@@ -6,6 +6,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\UsesClass;
 use Webrtc\RTP\Jitter\JitterBuffer;
 use PHPUnit\Framework\TestCase;
+use Symfony\Bridge\PhpUnit\ClockMock;
 use Webrtc\RTP\Jitter\JitterFrame;
 use Webrtc\RTP\RtpPacket;
 
@@ -379,6 +380,79 @@ class JitterBufferTest extends TestCase
 
         // The last frame isn't complete: no packet with the marker bit.
         $this->assertSame([1234, 1235], array_map(fn ($frame) => $frame->getTimestamp(), $jBuffer->flush()));
+    }
+
+    private function videoPacket(int $sequenceNumber, int $timeStamp, bool $marker = false): RtpPacket
+    {
+        $packet = $this->createRtpPacket($sequenceNumber, $timeStamp);
+        $packet->setDecodedData(chr($sequenceNumber));
+        $packet->setMarker($marker ? 1 : 0);
+        return $packet;
+    }
+
+    public function testVideoFrameEndsWithItsMarker(): void
+    {
+        $jBuffer = new JitterBuffer(128, 0, true);
+        [, $frame] = $jBuffer->add($this->videoPacket(0, 1000));
+        $this->assertNull($frame);
+        // Complete without the next frame's first packet, which may be lost.
+        [, $frame] = $jBuffer->add($this->videoPacket(1, 1000, true));
+        $this->assertSame("\x00\x01", $frame?->getData());
+        $this->assertSame(2, $jBuffer->getOrigin());
+    }
+
+    public function testVideoWaitsForMissingPacketsThenSkipsTheirFrame(): void
+    {
+        // Times exact in binary, with 9 digits of nanoseconds: ClockMock::hrtime() doesn't pad them.
+        ClockMock::withClockMock(1000.25);
+        try {
+            $jBuffer = new JitterBuffer(512, 0, true);
+            $jBuffer->add($this->videoPacket(0, 1000));
+            // Packet 1 is lost: the frame waits for its retransmission.
+            [$pli, $frame] = $jBuffer->add($this->videoPacket(2, 1000, true));
+            $this->assertFalse($pli);
+            $this->assertNull($frame);
+            [$pli, $frame] = $jBuffer->add($this->videoPacket(3, 2000));
+            $this->assertFalse($pli);
+            $this->assertNull($frame);
+            ClockMock::usleep(875000);
+            [$pli, $frame] = $jBuffer->add($this->videoPacket(4, 2000, true));
+            $this->assertFalse($pli);
+            $this->assertNull($frame);
+            // It never comes: after a second, its frame is dropped and a keyframe asked for, and the next one goes on.
+            ClockMock::usleep(250000);
+            [$pli, $frame] = $jBuffer->add($this->videoPacket(5, 3000));
+            $this->assertTrue($pli);
+            $this->assertSame("\x03\x04", $frame?->getData());
+            $this->assertSame(2000, $frame->getTimestamp());
+            $this->assertSame(5, $jBuffer->getOrigin());
+        } finally {
+            ClockMock::withClockMock(false);
+        }
+    }
+
+    public function testVideoRetransmissionInTimeCompletesTheFrame(): void
+    {
+        // Times exact in binary, with 9 digits of nanoseconds: ClockMock::hrtime() doesn't pad them.
+        ClockMock::withClockMock(1000.25);
+        try {
+            $jBuffer = new JitterBuffer(512, 0, true);
+            $jBuffer->add($this->videoPacket(0, 1000));
+            $jBuffer->add($this->videoPacket(2, 1000, true));
+            ClockMock::usleep(500000);
+            [$pli, $frame] = $jBuffer->add($this->videoPacket(1, 1000));
+            $this->assertFalse($pli);
+            $this->assertSame("\x00\x01\x02", $frame?->getData());
+            // The wait starts over for the next gap.
+            ClockMock::usleep(875000);
+            $jBuffer->add($this->videoPacket(4, 2000, true));
+            ClockMock::usleep(250000);
+            [$pli, $frame] = $jBuffer->add($this->videoPacket(5, 3000));
+            $this->assertFalse($pli);
+            $this->assertNull($frame);
+        } finally {
+            ClockMock::withClockMock(false);
+        }
     }
 
     private function createRtpPacket(int $sequenceNumber, int $timeStamp): RtpPacket

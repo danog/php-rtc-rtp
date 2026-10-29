@@ -5,6 +5,7 @@ namespace Tests\Webrtc\RTP\Receiver;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\UsesClass;
 use Webrtc\RTP\Receiver\NackGenerator;
+use Webrtc\RTP\RtpConstants;
 use Webrtc\RTP\RtpPacket;
 
 #[UsesClass(RtpPacket::class)]
@@ -48,14 +49,16 @@ class NackGeneratorTest extends AbstractRtpReceiver
     public function testWithLossTruncate()
     {
         $generator = new NackGenerator();
-        $packets = $this->createRtpPackets(259, 0);
+        $size = RtpConstants::RTP_HISTORY_SIZE;
+        $packets = $this->createRtpPackets(2 * $size + 3, 0);
 
         $generator->add($packets[0]);
-        $generator->add($packets[129]);
-        $this->assertEquals(range(1, 128), $generator->getMissing());
+        $generator->add($packets[$size + 1]);
+        $this->assertEquals(range(1, $size), $generator->getMissing());
 
-        $generator->add($packets[258]);
-        $this->assertEquals(range(130, 257), $generator->getMissing());
+        // Only the last RTP_HISTORY_SIZE packets are asked for.
+        $generator->add($packets[2 * $size + 2]);
+        $this->assertEquals(range($size + 2, 2 * $size + 1), $generator->getMissing());
     }
 }
 

@@ -12,8 +12,10 @@
 namespace Webrtc\RTP;
 
 final class RtpConstants {
-    // Used for NACK and retransmission
-    public const RTP_HISTORY_SIZE = 128;
+    // Used for NACK and retransmission: how many packets are kept to be retransmitted, and how far back lost ones are
+    // asked for. A keyframe can take more than a hundred packets, sent at once: the first ones have to be still there
+    // when the NACK for them comes back.
+    public const RTP_HISTORY_SIZE = 512;
 
     // Reserved to avoid confusion with RTCP
     public const FORBIDDEN_PAYLOAD_TYPES = [72, 73, 74, 75, 76];

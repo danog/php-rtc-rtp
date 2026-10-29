@@ -21,3 +21,7 @@ require __DIR__ . '/../vendor/autoload.php';
 // classes and strips their "readonly", which breaks their inheritance at load time.
 BypassFinals::setWhitelist([realpath(__DIR__ . '/../src') . '/*']);
 BypassFinals::enable();
+
+// PHP binds an unqualified hrtime() call to the global function the first time it runs: the clock mock of the jitter
+// buffer must exist before any test (the receiver's too) makes it run.
+\Symfony\Bridge\PhpUnit\ClockMock::register(\Webrtc\RTP\Jitter\JitterBuffer::class);

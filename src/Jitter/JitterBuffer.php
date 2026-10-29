@@ -30,7 +30,19 @@ final class JitterBuffer
      */
     private const MAX_MISORDER = 100;
 
+    /**
+     * How long a video frame waits for its missing packets (which the receiver asked for with a NACK), in
+     * nanoseconds, before it's given up and the buffer moves on to the next frame (asking for a keyframe).
+     */
+    private const MAX_GAP_WAIT_NS = 1_000_000_000;
+
     private ?int $origin = null;
+
+    /** The newest sequence number added, to tell a gap (packets missing before it) from the end of the stream. */
+    private ?int $head = null;
+
+    /** When the frame at the origin started waiting for missing packets (hrtime, in nanoseconds), if it is. */
+    private ?int $gapSinceNs = null;
 
     /** @var array<int, RtpPacket|null> Ring buffer of RTP packets. */
     private array $packets = [];
@@ -51,6 +63,16 @@ final class JitterBuffer
         }
 
         $this->packets = array_fill(0, $capacity, null);
+    }
+
+    /**
+     * An hrtime reading means nothing after a restart: a frame waiting for packets waits afresh.
+     *
+     * @return list<string>
+     */
+    public function __sleep(): array
+    {
+        return ['capacity', 'prefetch', 'isVideo', 'origin', 'head', 'packets'];
     }
 
     /**
@@ -107,7 +129,68 @@ final class JitterBuffer
         }
 
         $this->packets[$seqNum % $this->capacity] = $packet;
-        return [$pliFlag, $this->extractFrame()];
+        if ($this->head === null || $this->uint16Add($seqNum, -$this->head) < 0x8000) {
+            $this->head = $seqNum;
+        }
+        $frame = $this->extractFrame();
+        if (!$this->isVideo) {
+            return [$pliFlag, $frame];
+        }
+        if ($frame !== null || !$this->hasGap()) {
+            $this->gapSinceNs = null;
+            return [$pliFlag, $frame];
+        }
+        // The frame at the origin is missing packets that later ones overtook: wait for their retransmissions, but
+        // not forever (a retransmission can be lost too), or the video would stall until the buffer overflows.
+        $now = hrtime(true);
+        $this->gapSinceNs ??= $now;
+        if ($now - $this->gapSinceNs < self::MAX_GAP_WAIT_NS) {
+            return [$pliFlag, null];
+        }
+        $this->gapSinceNs = null;
+        $this->skipGap();
+        return [true, $this->extractFrame()];
+    }
+
+    /**
+     * Whether the run of packets from the origin stops at a missing one with later packets after it.
+     */
+    private function hasGap(): bool
+    {
+        if ($this->origin === null || $this->head === null) {
+            return false;
+        }
+        $span = $this->uint16Add($this->head, -$this->origin);
+        for ($count = 0; $count < $span && $count < $this->capacity; $count++) {
+            if ($this->packets[($this->origin + $count) % $this->capacity] === null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Drop the frame with the first gap: the packets up to the gap and after it, up to the end of a frame (the
+     * packet with the marker bit), or up to the newest packet if none ends one.
+     */
+    private function skipGap(): void
+    {
+        if ($this->origin === null || $this->head === null) {
+            return;
+        }
+        $passedGap = false;
+        $span = $this->uint16Add($this->head, -$this->origin);
+        for ($count = 0; $count <= $span && $count < $this->capacity; $count++) {
+            $pos = $this->origin % $this->capacity;
+            $packet = $this->packets[$pos];
+            $this->packets[$pos] = null;
+            $this->origin = $this->uint16Add($this->origin, 1);
+            if ($packet === null) {
+                $passedGap = true;
+            } elseif ($passedGap && $packet->getMarker()) {
+                return;
+            }
+        }
     }
 
     /**
@@ -141,10 +224,7 @@ final class JitterBuffer
                 $timestamp = $packet->getTimestamp();
             } elseif ($packet->getTimestamp() !== $timestamp) {
                 if ($frame === null) {
-                    $frame = new JitterFrame(
-                        implode("", array_map(fn(RtpPacket $p) => $p->getDecodedData(), $packets)),
-                        $timestamp
-                    );
+                    $frame = $this->makeFrame($packets, $timestamp);
                     $removeCount = $count;
                 }
 
@@ -159,6 +239,24 @@ final class JitterBuffer
             }
 
             $packets[] = $packet;
+
+            if ($this->isVideo && $packet->getMarker()) {
+                // The last packet of a video frame: it's complete without waiting for the next one, which may be
+                // missing (a frame shouldn't be dropped with a gap after it).
+                if ($frame === null) {
+                    $frame = $this->makeFrame($packets, $timestamp);
+                    $removeCount = $count + 1;
+                }
+
+                $framesCount++;
+                if ($framesCount >= $this->prefetch) {
+                    $this->remove($removeCount);
+                    return $frame;
+                }
+
+                $packets = [];
+                $timestamp = null;
+            }
         }
 
         return null;
@@ -205,6 +303,8 @@ final class JitterBuffer
         }
         $this->packets = array_fill(0, $this->capacity, null);
         $this->origin = null;
+        $this->head = null;
+        $this->gapSinceNs = null;
 
         return $frames;
     }
@@ -287,6 +387,8 @@ final class JitterBuffer
     {
         $this->packets = array_fill(0, $this->capacity, null);
         $this->origin = $newOrigin;
+        $this->head = null;
+        $this->gapSinceNs = null;
     }
 
     /**

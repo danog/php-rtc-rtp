@@ -22,6 +22,9 @@ use Webrtc\RTP\Jitter\JitterBuffer;
 use Webrtc\RTP\Jitter\JitterFrame;
 use Webrtc\RTP\MediaStreamTrack\MediaStreamTrack;
 use Webrtc\RTP\MediaStreamTrack\RemoteStreamTrack;
+use Webrtc\AVCodec\Frame\FrameInterface;
+use Webrtc\Codecs\EncodedPacket;
+use Webrtc\RTP\MediaStreamTrack\MediaStreamTrackSink;
 use Webrtc\RTP\Receiver\DecoderQueue;
 use Webrtc\RTP\Receiver\NackGenerator;
 use Webrtc\RTP\Receiver\Rate\InterArrival;
@@ -431,6 +434,64 @@ class RTCRtpReceiverTest extends TestCase
         $receiver->handleRtpPacket($packet, 0);
 
         $receiver->stop();
+    }
+
+    /**
+     * A lost packet comes back through RTX, whose apt parameter is a string when it comes from the SDP: the frame is
+     * completed with it.
+     */
+    public function testRtxFromTheSdpCompletesTheFrame(): void
+    {
+        $receiver = new RTCRtpReceiver(MediaKind::Video, $this->transportMock);
+        $track = new RemoteStreamTrack(MediaKind::Video);
+        $frames = new \ArrayObject;
+        $sink = new class($frames) implements MediaStreamTrackSink {
+            public function __construct(private \ArrayObject $frames)
+            {
+            }
+            public function onFrame(FrameInterface|EncodedPacket $frame): bool
+            {
+                $this->frames[] = $frame;
+                return true;
+            }
+        };
+        $track->setSink($sink);
+        $receiver->setTrack($track);
+        $receiver->setRawMode(true);
+        $receiver->start(new RTCRtpReceiveParameters(codecs: [
+            $this->getVp8Codec(),
+            new RTCRtpCodecParameters(mimeType: "video/rtx", clockRate: 90000, payloadType: 101, parameters: ["apt" => "100"]),
+        ], encodings: [
+            new RTCRtpDecodingParameters(1234, 100, new RTCRtpRtxParameters(2345)),
+        ]));
+
+        // A VP8 frame in three packets (the payload descriptor's S bit on the first one), the second one lost.
+        $vp8 = static function (int $seq, string $payload, bool $marker): RtpPacket {
+            $packet = new RtpPacket();
+            $packet->setSsrc(1234);
+            $packet->setPayloadType(100);
+            $packet->setSequenceNumber($seq);
+            $packet->setTimestamp(1000);
+            $packet->setMarker($marker ? 1 : 0);
+            $packet->setPayload($payload);
+            return $packet;
+        };
+        $receiver->handleRtpPacket($vp8(10, "\x10first-", false), 0);
+        $receiver->handleRtpPacket($vp8(12, "\x00third", true), 0);
+        $this->assertCount(0, $frames);
+
+        // RFC 4588: the original sequence number, then the original payload.
+        $rtx = new RtpPacket();
+        $rtx->setSsrc(2345);
+        $rtx->setPayloadType(101);
+        $rtx->setSequenceNumber(500);
+        $rtx->setTimestamp(1000);
+        $rtx->setPayload(pack('n', 11)."\x00second-");
+        $receiver->handleRtpPacket($rtx, 0);
+
+        $this->assertCount(1, $frames);
+        $this->assertSame("first-second-third", $frames[0]->getData());
+        unset($sink);
     }
 
     public function testRtpRtxUnknownSsrc()

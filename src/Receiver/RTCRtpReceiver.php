@@ -63,6 +63,12 @@ final class RTCRtpReceiver implements RtpReceiverInterface
 
 {
     /**
+     * How many packets the video jitter buffer holds: a whole keyframe (which can take more than a hundred packets,
+     * sent at once) plus what arrives while its lost packets are retransmitted, or it overflows and drops the frame.
+     */
+    private const VIDEO_JITTER_CAPACITY = 512;
+
+    /**
      * Minimum bandwidth (bps) we ever advertise in REMB. A receive-and-record endpoint is not
      * downlink-limited, and the delay-based estimator misfires under PHP's arrival-time jitter, so we
      * never let it throttle the peer below a value that lets it reach its own configured maximum.
@@ -117,7 +123,7 @@ final class RTCRtpReceiver implements RtpReceiverInterface
         if ($transport->getState() === TLSState::CLOSED) {
             throw new InvalidArgumentException("Transport is closed");
         }
-        $this->jitterBuffer = $kind === MediaKind::Audio ? new JitterBuffer(16, 4) : new JitterBuffer(128, 0, true);
+        $this->jitterBuffer = $kind === MediaKind::Audio ? new JitterBuffer(16, 4) : new JitterBuffer(self::VIDEO_JITTER_CAPACITY, 0, true);
         $this->nackGenerator = $kind === MediaKind::Video ? new NackGenerator() : null;
         $this->remoteBitrateEstimator = $kind === MediaKind::Video ? new RemoteBitrateEstimator() : null;
         $this->stats = new RTCStatsReport();
@@ -386,6 +392,8 @@ final class RTCRtpReceiver implements RtpReceiverInterface
         $this->updateRtcpStatistics($packet, $codec);
         $packet = $this->handleRetransmission($packet, $codec);
         if (!$packet) return;
+        // A retransmission is depacketized and assembled as the codec it repeats.
+        $codec = $this->codecs[$packet->getPayloadType()] ?? $codec;
 
         $this->handleMissingPackets($packet);
         $decoded = $this->parsePayload($packet, $codec);
@@ -501,8 +509,9 @@ final class RTCRtpReceiver implements RtpReceiverInterface
                 return null;
             }
 
-            $apt = $codec->parameters["apt"] ?? null;
-            if (!is_int($apt)) {
+            // From the SDP, the apt parameter is a string.
+            $apt = CodecUtility::apt($codec);
+            if ($apt === null || !isset($this->codecs[$apt])) {
                 return null;
             }
             $codec = $this->codecs[$apt];
